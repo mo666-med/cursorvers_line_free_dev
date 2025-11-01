@@ -109,21 +109,21 @@ jobs:
         id: execute
         run: |
           echo "🚀 Starting Autonomous Agent execution for Issue #${{ needs.check-trigger.outputs.issue_number }}"
+          
+          # Miyabi CLIを直接使用
+          # npx miyabi agent run を実行
+          npx miyabi agent run --issue ${{ needs.check-trigger.outputs.issue_number }} || {
+            echo "⚠️ Miyabi agent execution failed or not configured"
+            echo "📝 Creating placeholder comment instead"
+            gh issue comment ${{ needs.check-trigger.outputs.issue_number }} --body "🤖 Agent execution attempted but Miyabi agents need configuration.
 
-          # Run the parallel executor script
-          # Note: Miyabi agents implementation is pending
-          # For now, we'll use a placeholder or skip if not implemented
-          if npm run agents:parallel:exec -- --help 2>/dev/null; then
-            npm run agents:parallel:exec -- \
-              --issue ${{ needs.check-trigger.outputs.issue_number }} \
-              --concurrency 3 \
-              --log-level info
-          else
-            echo "⚠️ Miyabi agents not fully configured yet"
-            echo "📝 This is a placeholder execution"
-            # Create a simple comment on the issue instead
-            gh issue comment ${{ needs.check-trigger.outputs.issue_number }} --body "🤖 Agent execution placeholder - Miyabi agents configuration pending"
-          fi
+**Next Steps:**
+1. Set ANTHROPIC_API_KEY secret if not already set
+2. Ensure Miyabi is properly configured for this project
+3. Check workflow logs for details
+
+[View Logs →](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
