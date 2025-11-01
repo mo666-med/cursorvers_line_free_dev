@@ -99,7 +99,7 @@ jobs:
         run: |
           cat > .env << EOF
           GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }}
-          OPENAI_API_KEY=${{ secrets.LLM_API_KEY }}
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY || secrets.LLM_API_KEY }}
           OPENAI_ENDPOINT=${{ secrets.LLM_ENDPOINT }}
           OPENAI_MODEL=${{ vars.OPENAI_MODEL }}
           DEVICE_IDENTIFIER="GitHub Actions Runner"
@@ -113,12 +113,14 @@ jobs:
           echo "🚀 Starting Codex-powered agent execution for Issue #${{ needs.check-trigger.outputs.issue_number }}"
           
           # OpenAI APIを使用するCodexエージェントを実行
-          if [ -z "${{ secrets.LLM_API_KEY }}" ]; then
-            echo "⚠️ LLM_API_KEY is not set. Skipping agent execution."
-            gh issue comment ${{ needs.check-trigger.outputs.issue_number }} --body "⚠️ Codex Agent execution skipped: LLM_API_KEY not configured.
+          if [ -z "${{ secrets.OPENAI_API_KEY }}" ] && [ -z "${{ secrets.LLM_API_KEY }}" ]; then
+            echo "⚠️ OPENAI_API_KEY or LLM_API_KEY is not set. Skipping agent execution."
+            gh issue comment ${{ needs.check-trigger.outputs.issue_number }} --body "⚠️ Codex Agent execution skipped: OPENAI_API_KEY or LLM_API_KEY not configured.
 
 **Setup:**
 \`\`\`bash
+gh secret set OPENAI_API_KEY --body \"sk-...\"
+# または
 gh secret set LLM_API_KEY --body \"sk-...\"
 gh secret set LLM_ENDPOINT --body \"https://api.openai.com/v1/chat/completions\"
 \`\`\`"
@@ -134,7 +136,8 @@ gh secret set LLM_ENDPOINT --body \"https://api.openai.com/v1/chat/completions\"
           }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.LLM_API_KEY }}
+          LLM_API_KEY: ${{ secrets.OPENAI_API_KEY || secrets.LLM_API_KEY }}
           LLM_ENDPOINT: ${{ secrets.LLM_ENDPOINT }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
           ISSUE_NUMBER: ${{ needs.check-trigger.outputs.issue_number }}
