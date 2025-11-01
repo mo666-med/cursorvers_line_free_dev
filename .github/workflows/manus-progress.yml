@@ -32,9 +32,7 @@ jobs:
         id: parse
         run: |
           mkdir -p tmp
-          cat <<'JSON' > tmp/progress.json
-${{ toJson(github.event.client_payload) }}
-JSON
+          printf '%s\n' '${{ toJson(github.event.client_payload) }}' > tmp/progress.json
           echo "payload_path=tmp/progress.json" >> $GITHUB_OUTPUT
           echo "event_type=$(jq -r '.event_type' tmp/progress.json)" >> $GITHUB_OUTPUT
           echo "task_id=$(jq -r '.task_id' tmp/progress.json)" >> $GITHUB_OUTPUT

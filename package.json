@@ -6,8 +6,13 @@
   "main": "index.js",
   "scripts": {
     "typecheck": "echo 'TypeScript check skipped' || true",
-    "test": "echo 'Tests skipped' || true",
-    "codex-agent": "node scripts/codex-agent.js"
+    "test": "node --test tests/node/**/*.test.mjs",
+    "test:watch": "node --test --watch tests/node/**/*.test.mjs",
+    "test:manus-api": "node --test tests/node/manus-api.test.mjs",
+    "test:manus-api-cli": "node --test tests/node/manus-api-cli.test.mjs",
+    "codex-agent": "node scripts/codex-agent.js",
+    "miyabi": "bash scripts/miyabi-chat.sh",
+    "chat": "bash scripts/miyabi-chat.sh"
   },
   "keywords": [
     "line",
@@ -17,7 +22,7 @@
   ],
   "author": "mo666-med",
   "license": "MIT",
-  "dependencies": {},
-  "devDependencies": {}
+  "dependencies": {
+    "@octokit/rest": "^22.0.1"
+  }
 }
-
