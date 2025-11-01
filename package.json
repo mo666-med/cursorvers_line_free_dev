@@ -1,0 +1,23 @@
+{
+  "name": "cursorvers-line-discord",
+  "version": "1.0.0",
+  "description": "LINE友だち登録システム - GitHub Actions中心運用",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "typecheck": "echo 'TypeScript check skipped' || true",
+    "test": "echo 'Tests skipped' || true",
+    "agents:parallel:exec": "echo 'Miyabi agents not configured yet' || true"
+  },
+  "keywords": [
+    "line",
+    "bot",
+    "github-actions",
+    "manus-api"
+  ],
+  "author": "mo666-med",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {}
+}
+
