@@ -1,0 +1,32 @@
+# Economic Circuit Breaker Budget Configuration
+# AGENTS.md v5.0 - Economic Governance Protocol準拠
+
+# 月間予算（USD）
+monthly_budget_usd: 50
+
+# しきい値設定（0.0-1.0の範囲、またはパーセンテージ）
+thresholds:
+  # 警告レベル（80%）
+  warning: 0.8
+  # 緊急レベル（150%）
+  emergency: 1.5
+
+# 緊急時のアクション
+emergency_actions:
+  # 緊急時に自動無効化するワークフロー
+  disable_workflows:
+    - autonomous-agent.yml
+    - line-event.yml
+    - manus-progress.yml
+    # 必要に応じて追加のワークフローを無効化可能
+    # - economic-circuit-breaker.yml  # 監視自体は無効化しない
+
+# コスト追跡対象サービス
+services:
+  anthropic:
+    name: "Anthropic API"
+    monthly_budget: 40
+  firebase:
+    name: "Firebase"
+    monthly_budget: 10
+

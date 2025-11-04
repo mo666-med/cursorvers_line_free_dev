@@ -30,6 +30,12 @@
 - Exact KPI baselines for article traffic, conversion funnels, and revenue attribution remain TBD.
 - Need clarity on cadence and content types for automated messages (frequency limits, segmentation).
 - Governance surrounding Google Sheets access, retention, and auditing still to be set.
+- Stakeholder asked for “GitHub Actions-driven requirements definition” but no concrete acceptance criteria shared yet (awaiting clarification).
+
+## Session Notes (2024-??)
+- Reconfirmed architecture expectation that funnel automation should stay GitHub Actions-first; no new business metrics provided yet despite follow-up request.
+- Still need stakeholder input on broader KPI stack, subscriber segmentation strategy, and operational ownership of content approvals.
+- Next steering checkpoint should secure answers to outstanding questions above before advancing to `/sdd-requirements`.
 
 ## Session Summary & Next Steps
 - Captured product vision (note → LINE → consulting funnel) and provisional conversion target (40% note-to-LINE opt-in).

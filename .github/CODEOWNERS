@@ -1,0 +1,6 @@
+# Require explicit review for plan and workflow changes
+orchestration/plan/** @mo666-med
+.github/workflows/plan-validator.yml @mo666-med
+.github/workflows/line-event.yml @mo666-med
+.github/workflows/manus-progress.yml @mo666-med
+.github/workflows/manus-task-runner.yml @mo666-med

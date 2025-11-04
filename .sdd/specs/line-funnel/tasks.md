@@ -17,13 +17,14 @@
 | T11 | Standardise observability: JSON schema validation, Step Summary metrics, Datadog/OTLP stubs | DevOps | P1 | [Design §Testing Strategy → Observability & Regression Guards](design.md#testing-strategy)<br>[Design §Deployment & Operational Considerations → Observability](design.md#deployment--operational-considerations) | `scripts/notify.js`<br>`logs/**/*.json`<br>`scripts/metrics/report-step-summary.ts`<br>`docs/RUNBOOK.md` | AJV schemas enforced in workflows; Step Summary includes Supabase status/retry/cost; runbook updated with audit review procedure | T5, T6, T7, T10 | No |
 | T12 | Automate Supabase ↔ Sheets ledger reconciliation with alerting on drift | Data/Infra | P1 | [Design §Google Sheets (transitional ledger)](design.md#google-sheets-transitional-ledger)<br>[Design §Risks & Mitigations](design.md#risks--mitigations) | `scripts/reconcile-ledgers.ts`<br>`tests/node/reconcile-ledgers.test.mjs`<br>`docs/DATA_MODEL.md` | Reconciliation script emits diff report + optional Slack alert; scheduled/manual run documented; unit tests cover drift scenarios | T5, T8 | Yes |
 | T13 | Enforce security & privacy guardrails (sanitisation lint rules, nightly identifier scans) | Security/Dev | P1 | [Design §Risks & Mitigations](design.md#risks--mitigations) | `scripts/lint/sanitize-guardrails.ts`<br>`.github/workflows/security-scan.yml`<br>`docs/SECURITY.md` | Lint rule blocks unhashed identifiers; nightly scan job configured; documentation updated with remediation steps | T5, T6 | Yes |
-| T14 | Drive stakeholder decision log (KPI owner, Sheets strategy, plan approvals, degraded messaging) | Product/Ops | P2 | [Design §Outstanding Questions & Assumptions](design.md#outstanding-questions--assumptions) | `docs/CURRENT_PROGRESS.md`<br>`.sdd/steering/*.md`<br>`issues/*` | Decision log updated with owners + due dates; blocking decisions escalated; steering cadence recorded | Parallel (inform all phases) | Yes |
+| T14 | Maintain decision log (messaging cadence, Sheets governance, degraded ops) | Product/Ops | P2 | [Design §Messaging Cadence & Segmentation Policy](design.md#messaging-cadence--segmentation-policy)<br>[Design §Google Sheets ワークシート](design.md#google-sheets-ワークシート)<br>[Design §Degraded / Manual Fallback Operations](design.md#degraded--manual-fallback-operations) | `.sdd/specs/line-funnel/decisions.md`<br>`.sdd/steering/*.md`<br>`docs/CURRENT_PROGRESS.md` | Decision log (D1–D5+) current; Runbook reflects latest policy updates; review cadence captured in steering notes | Parallel (inform all phases) | Yes |
+| T15 | Document retention & fallback runbooks (Sheets, logs, ICS handoff) | Ops/DevOps | P2 | [Design §Google Sheets ワークシート](design.md#google-sheets-ワークシート)<br>[Design §Log Retention & Rotation](design.md#log-retention--rotation)<br>[Design §Degraded / Manual Fallback Operations](design.md#degraded--manual-fallback-operations) | `docs/RUNBOOK.md`<br>`docs/PRODUCTION_AUTO_RUN.md`<br>`docs/POST_MERGE_VERIFICATION.md` | Runbook sections updated; rotate-logs workflow referenced; manual fallback checklist signed off by Ops Lead | T5, T11, T14 | Yes |
 
 ### Sequencing & Parallelism
 - **Phase 0 – Foundations:** T1 → T2 establish requirements traceability and database schemas. T3 can start once T1 locks traceability.
 - **Phase 1 – Orchestration Core:** T4 depends on earlier groundwork; T5 & T6 follow sequentially because they share libraries; T7 can run in parallel with T5/T6 after plan artifacts stabilise.
 - **Phase 2 – Reporting & Ops Hardening:** T8 executes once schema (T2) is live; T9, T10, and T11 leverage completed workflows and can run concurrently with careful coordination.
-- **Phase 3 – Governance & Safeguards:** T12 and T13 begin after core data flows (T5–T8); T14 remains ongoing to unblock prior phases.
+- **Phase 3 – Governance & Safeguards:** T12 and T13 begin after core data flows (T5–T8); T14 stays active for decision hygiene, while T15 captures the agreed policies in runbooks.
 
 ### Phase 2 Kickoff – Immediate Actions
 - **T8 (Data/Marketing Ops)**  
@@ -39,9 +40,17 @@
   - Deno/Node/Python CI ワークフローを有効化し、`npm test` で node --test が走るよう統一。  
   - 必要に応じてカバレッジ閾値や Step Summary を導入し、失敗時のフィードバックを明確化。
 
+### Dev-Infra Integration Notes (2025-11-04)
+
+- [x] Supabase CLI ラッパー（`~/bin/supabase`）を配置し `./dev-infra/dev.sh check` をグリーン化
+- [x] GitHub CLI を keyring 認証で再設定し `gh auth status` / `dev.sh check` を通過
+- [x] `dev.sh plan-diff --summary` で Plan/PlanDelta 同期、`dev.sh dispatch manus_progress` を実行
+- [x] `.env` から `MANUS_API_KEY` / `PROGRESS_WEBHOOK_URL` / `MANUS_BASE_URL` を `dev.sh sync-gh` で GitHub へ反映
+- [x] テンプレート適用方針を決定し、`docs/TEMPLATE_INTEGRATION_PLAN.md` を更新（ホワイトリスト or テンプレ整理）。`templates/excludes/cursorvers-line-discord.txt` を使った `--exclude-file` 適用パスを検証済み。
+
 ### Blockers & Risks
 - Vendor billing API or CSV access delays could stall T7; prepare mock feeds and confirm Finance contacts.
 - Missing `contents:write` scope on GitHub tokens will block Git-based logging (T5–T7); secure PAT fallback before production dry-runs.
 - Supabase production project allocation remains pending; T2/T5/T6 require endpoint decisions—track under T14.
-- Degraded ICS messaging assets and contact rotation must be finalised prior to closing T4/T7; escalate via stakeholder log.
+- Degraded ICS messaging assetsと連絡体制については決定済み（D3）だが、Runbook 反映と定期レビュー（T15）を忘れないこと。
 - Security scans (T13) rely on access to repositories storing historical logs; ensure permissions granted to automation bot.

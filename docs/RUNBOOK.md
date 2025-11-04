@@ -146,37 +146,64 @@ python orchestration/cost.py orchestration/plan/current_plan.json
 
 ---
 
-## 5. 予算管理
+## 5. メッセージ配信ポリシー
 
-### 5-1. 予算設定
+- **頻度制限**: 同一ユーザー宛の自動配信は 1 日 1 通、週次最大 3 通まで。`line-event.yml` の `dedupe_key`／`retry_after_seconds` および PlanDelta 判定で超過を防止する。
+- **例外運用**: イベント告知など緊急性の高い配信は Ops Lead の承認を経て実施し、`logs/progress/` にメモを残す。
+- **セグメント**: 初期リリースは全ユーザー一律。`cta_tags` を基にした手動セグメントから検証し、エンゲージメント指標による自動セグメントは後続フェーズで段階導入。
+- **レビュー**: Product/Ops が月次で KPI レポートを確認し、必要に応じて上限値やセグメント方針を更新する。更新内容は `.sdd/specs/line-funnel/decisions.md` と本 Runbook に反映する。
+
+---
+
+## 6. Google Sheets 台帳管理
+
+- **用途**: Supabase 完全移行までの暫定 CRM。`scripts/sheets/upsert-line-member.js` が `line-event.yml` から呼ばれ、`user_hash` をキーに upsert。
+- **保持期間**: 移行完了までアクティブデータは保持。Supabase へ移行後は 6 か月でアーカイブ削除。過去データは Supabase 側で永続化する。
+- **アクセス権限**: 編集は Tech Lead / Ops Lead のみ。閲覧は Marketing チームと Product Lead に限定。Google Workspace Admin で監査ログを有効化。
+- **監査と照合**: 月次で `scripts/reconcile-ledgers.ts`（実装予定）または手動クロスチェックを実施し、重大な差分は Slack `#line-ops` に報告。結果は `logs/progress/` もしくは KPI レポートに添付する。
+
+---
+
+## 7. ログローテーション
+
+- **自動化**: `scripts/rotate-logs.sh` が 90 日超過の `logs/progress/*.json` を gzip 圧縮して `logs/progress/archive/YYYY-MM/` に移動し、1 年超過分を削除。
+- **スケジュール**: `.github/workflows/rotate-logs.yml` が毎週月曜 03:00 JST に実行。手動実行は GitHub の `workflow_dispatch` またはローカルで `bash scripts/rotate-logs.sh`。
+- **リポジトリ監視**: スクリプト内で `git count-objects -vH` を利用し、100MB 超で警告、200MB 超で強制アーカイブを実施。Actions 実行時のみ自動コミットを行う。
+- **運用メモ**: アーカイブされた gzip は Git LFS を使わずそのまま保持。四半期ごとに保持期間の妥当性を見直し、必要なら閾値を更新。
+
+---
+
+## 8. 予算管理
+
+### 8-1. 予算設定
 
 - **BUDGET_DAY**: 50pt/day
 - **BUDGET_WEEK**: 200pt/week
 
-### 5-2. デグレード経路
+### 8-2. 自動デグレードと縮退運用
 
-予算超過時は以下に切り替え：
+- `economic-circuit-breaker.yml` が `BUDGET.yml` の閾値を監視し、閾値超過時に `MANUS_ENABLED=false` と `orchestration/plan/production/degraded.flag` を設定して縮退モードへ移行。
+- 縮退中は Manus API 呼び出しを停止し、`line-event.yml` が `docs/alerts/line_degraded_outreach.ics` を通知に添付。Supabase と Google Sheets への書き込みは継続する。
+- Ops Lead は通知後 24 時間以内に対象リードを手動フォローし、結果を `logs/progress/` に追記。Slack `#line-ops` で担当割り当てとフォロー完了を共有する。
+- 手動対応時も医療ガードレール（個別診断を避け、緊急時は医療機関受診を案内）を必ず付与する。
 
-- **gmail.send** → **line.reply** + テキスト通知
-- **calendar.create** → **line.reply** + ics添付
+### 8-3. 復旧手順
 
-```bash
-# デグレード版Planを生成
-python orchestration/cost.py orchestration/plan/current_plan.json
-
-# 出力されたDegraded Planをcurrent_plan.jsonに上書き
-```
+1. 予算消化が閾値内に戻ったことを Finance/Ops が確認。
+2. `economic-circuit-breaker.yml` を手動実行し、`MANUS_ENABLED=true` に戻す。
+3. `degraded.flag` を削除して通常プランへ復帰後、`line-event.yml` の GitHub Step Summary でモードが `normal` に戻ったことを確認。
+4. ICS テンプレートやフォロー記録を見直し、`weekly-kpi-report.yml` で縮退期間中の件数を報告。
 
 ---
 
-## 6. 連絡網
+## 9. 連絡網
 
-### 6-1. 管理者連絡先
+### 9-1. 管理者連絡先
 
 - **LINE**: @529ybhfo
 - **Gmail**: mo666.med@gmail.com
 
-### 6-2. エスカレーション
+### 9-2. エスカレーション
 
 | レベル | 対応者 | 連絡方法 |
 |-------|-------|---------|
@@ -184,16 +211,16 @@ python orchestration/cost.py orchestration/plan/current_plan.json
 | L2: 中程度の障害 | 技術責任者 | LINE + Gmail |
 | L3: 重大な障害 | 経営層 | 電話 |
 
-### 6-3. 法務・税務窓口
+### 9-3. 法務・税務窓口
 
 - **法務顧問**: 月3万円／5万円枠
 - **税務顧問**: 固定費設計に依拠
 
 ---
 
-## 7. よくあるトラブルと対処法
+## 10. よくあるトラブルと対処法
 
-### 7-1. Front Doorが503を返す
+### 10-1. Front Doorが503を返す
 
 **原因**: FEATURE_BOT_ENABLED=false
 
@@ -202,7 +229,7 @@ python orchestration/cost.py orchestration/plan/current_plan.json
 supabase secrets set FEATURE_BOT_ENABLED=true --project-ref <your-project-ref>
 ```
 
-### 7-2. GitHub Actionsが動かない
+### 10-2. GitHub Actionsが動かない
 
 **原因**: Secretsが未設定
 
@@ -213,7 +240,7 @@ gh secret list
 gh secret set <SECRET_NAME> --body "<value>"
 ```
 
-### 7-3. GPT解析が失敗する
+### 10-3. GPT解析が失敗する
 
 **原因**: LLM_API_KEYが無効
 
@@ -223,39 +250,37 @@ gh secret set <SECRET_NAME> --body "<value>"
 gh secret set LLM_API_KEY --body "sk-..."
 ```
 
-### 7-4. Manusポイントが足りない
+### 10-4. Manusポイントが足りない
 
 **原因**: 予算超過
 
 **対処**:
-```bash
-# デグレード版Planに切り替え
-python orchestration/cost.py orchestration/plan/current_plan.json
-# 出力されたDegraded Planをcurrent_plan.jsonに上書き
-git add orchestration/plan/current_plan.json
-git commit -m "chore: switch to degraded plan"
-git push
-```
+- `gh workflow run economic-circuit-breaker.yml` を実行し、`MANUS_ENABLED=false` と `orchestration/plan/production/degraded.flag` が生成されたことを確認する。
+- `docs/alerts/line_degraded_outreach.ics` のテンプレートで通知を送り、Ops Lead が 24 時間以内に手動フォローを開始する。
+- フォロー完了後、`logs/progress/` に結果を記録し、`weekly-kpi-report.yml` のレポートで縮退件数を共有する。
 
 ---
 
-## 8. 定期メンテナンス
+## 11. 定期メンテナンス
 
-### 8-1. 週次
+### 11-1. 週次
 
-- [ ] logs/progress/ のログを確認
-- [ ] SLO達成状況を確認
-- [ ] Manusポイント消費量を確認
+- [ ] `logs/progress/` の最新ログと `logs/progress/archive/` を確認
+- [ ] SLO達成状況と GitHub Step Summary をレビュー
+- [ ] Manusポイント消費量を確認 (`economic-circuit-breaker.yml` の履歴含む)
+- [ ] `.github/workflows/rotate-logs.yml` の実行結果と自動コミットをチェック
+- [ ] Slack `#line-ops` で手動フォロー案件の進捗を共有
 
-### 8-2. 月次
+### 11-2. 月次
 
 - [ ] Secretsのローテーション
-- [ ] Front Doorの証明書更新確認
-- [ ] RUNBOOKの更新
+- [ ] Supabase Edge (Front Door) の証明書更新確認
+- [ ] Supabase と Google Sheets の差分を照合（`scripts/reconcile-ledgers.ts` 実装後はレポート添付）
+- [ ] `.sdd/specs/line-funnel/decisions.md` / Runbook の内容を最新化
 
 ---
 
-## 9. 参考リンク
+## 12. 参考リンク
 
 - [GitHub Repository](https://github.com/mo666-med/line-friend-registration-system)
 - [LINE Developers Console](https://developers.line.biz/console/)

@@ -1,0 +1,36 @@
+【MANUS_EXECUTION_BRIEF - Supabaseスキーマキャッシュリフレッシュ】
+
+役割：
+- あなたは実装担当（Executor）。入力された Plan JSON に忠実に実行する。
+- Supabaseのスキーマキャッシュをリフレッシュして、line_membersテーブルのカラムが認識されるようにする。
+
+目標：
+- Supabase DashboardのSQL Editorにアクセスして、スキーマキャッシュをリフレッシュするSQLを実行する
+- スキーマキャッシュが更新されるまで、複数回（5-10回）リフレッシュを実行する
+- リフレッシュ後、line_membersテーブルのカラムが存在することを確認する
+
+安全・ブランド：
+- Supabase Dashboardへのアクセスには認証が必要です
+- SQL実行は慎重に行い、誤ってデータを削除しないように注意する
+- スキーマキャッシュのリフレッシュは安全な操作です（データへの影響なし）
+
+進捗報告（Push）：
+- 各ステップ開始/成功/失敗、完了時に ProgressEvent v1.1 を {{PROGRESS_WEBHOOK_URL}} へPOST
+- 送信失敗時は指数バックオフ（最大5回）
+
+入出力：
+- 入力：Plan JSON（下記）
+- 出力：
+  - 成功：status="ok"、effects[]（実行したSQLコマンドの列挙）、logs[]
+  - 失敗：status="error"、error{code,message,hint}、partial_effects[]、logs[]
+
+実装ルール：
+1) 各 step は指定connectorのみ使用。idempotency_keyで二重実行を回避。
+2) on_error:
+   - "compensate"：補償（作成→削除等）を実施し、logsに詳細を残す。
+   - "abort"：直ちに停止し、status="error"。
+3) 監査：全外部呼出の要旨（時刻・操作・対象・idempotency_key）を logs に、結果を effects に列挙。
+
+Plan JSON：
+{{PLAN_JSON}}
+

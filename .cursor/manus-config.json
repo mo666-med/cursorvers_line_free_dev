@@ -1,0 +1,8 @@
+{
+  "manus_api": {
+    "api_key": "sk-tF3nImDcsAP5McOSmpNvXIjR92PZWkhNmAvqKBD1rNqAajItOKlIUa1d6pbWhHcLG_bJbqFhOWtQcEJEY5PSB1jN_aRY",
+    "base_url": "https://api.manus.im",
+    "progress_webhook_url": "https://haaxgwyimoqzzxzdaeep.supabase.co/functions/v1/relay"
+  }
+}
+

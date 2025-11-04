@@ -1,0 +1,92 @@
+{
+  "id": "line_welcome_v1",
+  "version": "2025-11-03",
+  "title": "LINE友だち登録時のウェルカムメッセージ送信（通常モード）",
+  "metadata": {
+    "channel": "line",
+    "description": "サニタイズ済みユーザーに対する初回応答と台帳更新を自動化する"
+  },
+  "risk": {
+    "level": "low",
+    "reasons": [
+      "送信メッセージは固定テンプレートのみ",
+      "サニタイズ済みハッシュIDのみを保存しPIIを扱わない"
+    ],
+    "approval": "not_required"
+  },
+  "steps": [
+    {
+      "id": "profile_lookup",
+      "action": "line.get_profile",
+      "connector": "line_bot",
+      "payload": {
+        "user_id": "{{HASHED_USER_ID}}",
+        "original_user_token_hint": "{{ORIGINAL_USER_TOKEN_HINT}}"
+      },
+      "idempotency_key": "{{EVENT_ID}}:profile",
+      "on_error": "abort"
+    },
+    {
+      "id": "record_member",
+      "action": "supabase.upsert",
+      "connector": "supabase",
+      "payload": {
+        "table": "line_members",
+        "conflict_target": ["user_hash"],
+        "data": {
+          "user_hash": "{{HASHED_USER_ID}}",
+          "first_opt_in_at": "{{EVENT_RECEIVED_AT}}",
+          "last_opt_in_at": "{{EVENT_RECEIVED_AT}}",
+          "cta_tags": [],
+          "status": "active",
+          "guardrail_sent_at": "{{EVENT_RECEIVED_AT}}",
+          "consent_guardrail": true,
+          "metadata": {
+            "display_name": "{{PROFILE.displayName}}",
+            "picture_url": "{{PROFILE.pictureUrl}}",
+            "status_message": "{{PROFILE.statusMessage}}",
+            "language": "{{PROFILE.language}}",
+            "latest_stage": "welcome_message_prepared",
+            "last_event_type": "{{EVENT_TYPE}}",
+            "reply_token": "{{REPLY_TOKEN}}"
+          }
+        }
+      },
+      "idempotency_key": "{{EVENT_ID}}:member",
+      "on_error": "abort"
+    },
+    {
+      "id": "welcome_delivery",
+      "action": "line.reply",
+      "connector": "line_bot",
+      "payload": {
+        "reply_token": "{{REPLY_TOKEN}}",
+        "messages": [
+          {
+            "type": "text",
+            "text": "はじめまして！mo666です。\n友だち追加ありがとうございます🙏\n\nこのアカウントでは、最新情報を定期的に配信していきます💌\nどうぞお楽しみに🎁✨\n\n【医療安全ガードレール】このアカウントは医療者ではありません。診断/治療/用量等の個別助言は行いません。一般情報の整理と安全案内のみ提供します。緊急の疑いがあれば直ちに救急へ。個人が特定され得る情報は入力しないでください。"
+          }
+        ]
+      },
+      "idempotency_key": "{{EVENT_ID}}:welcome",
+      "on_error": "compensate"
+    }
+  ],
+  "rollback": [
+    "record_member: Supabase line_members から user_hash={{HASHED_USER_ID}} を削除",
+    "welcome_delivery: LINE API への補償通知は不要だが、Slackへ手動報告"
+  ],
+  "observability": {
+    "success_metrics": [
+      "supabase.line_members.upsert",
+      "line.reply.success",
+      "automation.duration"
+    ],
+    "logs": [
+      "step_latency_ms",
+      "retries",
+      "idempotency_key",
+      "manus_task_id"
+    ]
+  }
+}

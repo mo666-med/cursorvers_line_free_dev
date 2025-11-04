@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "manus-api": {
+      "command": "node",
+      "args": [
+        ".cursor/mcp-servers/manus-api.js"
+      ],
+      "env": {
+        "MANUS_API_KEY": "${env:MANUS_API_KEY}",
+        "MANUS_BASE_URL": "${env:MANUS_BASE_URL}",
+        "PROGRESS_WEBHOOK_URL": "${env:PROGRESS_WEBHOOK_URL}"
+      },
+      "disabled": false,
+      "description": "Manus API integration - Create tasks and manage execution (JSON config support)"
+    },
+    "supabase": {
+      "url": "https://mcp.supabase.com/mcp?project_ref=haaxgwyimoqzzxzdaeep"
+    }
+  }
+}
