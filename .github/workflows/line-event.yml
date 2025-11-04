@@ -45,28 +45,30 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p tmp
-          # Handle both repository_dispatch and workflow_dispatch
-          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            printf '%s\n' '${{ toJson(github.event.client_payload) }}' > tmp/event.json
-          else
-            # workflow_dispatch: create a minimal test payload
-            TIMESTAMP=$(date -u +%s)
-            jq -n --arg ts "$TIMESTAMP" '{
-              "event_id": "test-\($ts)",
-              "received_at": now | todateiso8601,
-              "signature_valid": true,
-              "dedupe_key": "test-dedupe-key",
-              "events": [{
-                "type": "follow",
-                "timestamp": (now * 1000 | floor),
-                "source": {
-                  "type": "user",
-                  "userId": "test-user-id"
-                }
-              }]
-            }' > tmp/event.json
+          # Always initialize with a fallback payload for manual dispatches
+          TIMESTAMP=$(date -u +%s)
+          jq -n --arg ts "$TIMESTAMP" '{
+            "event_id": "test-\($ts)",
+            "received_at": now | todateiso8601,
+            "signature_valid": true,
+            "dedupe_key": "test-dedupe-key",
+            "events": [{
+              "type": "follow",
+              "timestamp": (now * 1000 | floor),
+              "source": {
+                "type": "user",
+                "userId": "test-user-id"
+              }
+            }]
+          }' > tmp/event.json
+
+          PAYLOAD='${{ toJson(github.event.client_payload) }}'
+          if [ "$PAYLOAD" != "null" ] && [ -n "$PAYLOAD" ]; then
+            if jq -e '.events | type == "array" and length > 0' <<<"$PAYLOAD" >/dev/null 2>&1; then
+              printf '%s\n' "$PAYLOAD" > tmp/event.json
+            fi
           fi
-          EVENT_TYPE=$(jq -r '.events[0].type // "unknown"' tmp/event.json)
+          EVENT_TYPE=$(jq -r '.events[0].type // "unknown"' tmp/event.json 2>/dev/null || echo "unknown")
           USER_COUNT=$(jq '[.events[].source.userId] | unique | length' tmp/event.json 2>/dev/null || echo "0")
           echo "event_type=$EVENT_TYPE" >> "$GITHUB_OUTPUT"
           echo "user_count=$USER_COUNT" >> "$GITHUB_OUTPUT"
@@ -165,6 +167,24 @@ jobs:
           if [ "$WITHIN" != "true" ]; then
             echo "⚠️ Budget warning: $(jq -r '.recommendation' tmp/cost.json)"
           fi
+
+      - name: Ensure Supabase scripts
+        run: |
+          set -euo pipefail
+          mkdir -p scripts/supabase
+          ensure_file() {
+            local target="$1"
+            local url="$2"
+            if [ -f "$target" ]; then
+              return 0
+            fi
+            echo "ℹ️ Fetching $target from $url"
+            curl -fsSL "$url" -o "$target"
+          }
+          BASE_REF=6bf29f72f6cd5bc91ceb11bf00e0d0b15ac3c004
+          ensure_file scripts/supabase/upsert-progress-event.js "https://raw.githubusercontent.com/mo666-med/cursorvers_line-discord/$BASE_REF/scripts/supabase/upsert-progress-event.js"
+          ensure_file scripts/supabase/upsert-line-event.js "https://raw.githubusercontent.com/mo666-med/cursorvers_line-discord/$BASE_REF/scripts/supabase/upsert-line-event.js"
+          chmod +x scripts/supabase/upsert-*.js
 
       - name: Upsert events into Supabase
         id: supabase
