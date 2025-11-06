@@ -17,3 +17,24 @@
 - Secrets/vars が不足しているとワークフローが早期失敗するため、設定変更時は `config/workflows/required-secrets.json` を参照し漏れを防ぐ。
 - ログ Artifact は 90 日保持。push 失敗時は GitHub Actions の Artifact からダウンロードして監査証跡を保全する。
 - ベンダースクリプト更新時は `npm run vendor:sync` → `npm run vendor:verify` → 差分確認の手順を必ず踏む。
+
+## Sign-off
+
+### Ops Lead
+- [ ] 実行結果を確認
+- [ ] Artifactの内容を確認
+- [ ] セキュリティ要件を確認
+- [ ] 承認日時: _______________
+- [ ] 署名: _______________
+
+### Compliance
+- [ ] 実行結果を確認
+- [ ] Artifact保持期間（90日）を確認
+- [ ] セキュリティ要件を確認
+- [ ] 承認日時: _______________
+- [ ] 署名: _______________
+
+**参考**:
+- Issue #8: https://github.com/mo666-med/cursorvers_line-discord/issues/8
+- 実行ログ: https://github.com/mo666-med/cursorvers_line-discord/actions/runs/19130277482
+- サインオフドキュメント: `docs/OPS_COMPLIANCE_SIGNOFF.md`
