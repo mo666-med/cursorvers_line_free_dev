@@ -32,12 +32,14 @@ async function fetchIssue(issueNumber) {
   const url = `https://api.github.com/repos/${owner}/${repo}/issues/${issueNumber}`;
   
   return new Promise((resolve, reject) => {
-    https.get(url, {
+    const req = https.get(url, {
       headers: {
         'Authorization': `Bearer ${GITHUB_TOKEN}`,
         'Accept': 'application/vnd.github+json; charset=utf-8',
         'User-Agent': 'Codex-Agent'
-      }
+      },
+      timeout: 30000, // 30秒タイムアウト
+      agent: false // 接続プールを無効化して確実に接続を試みる
     }, (res) => {
       // UTF-8エンコーディングを明示的に設定
       res.setEncoding('utf8');
@@ -54,10 +56,28 @@ async function fetchIssue(issueNumber) {
             reject(new Error(`JSON parse error: ${parseError.message}\nData: ${data.substring(0, 200)}`));
           }
         } else {
-          reject(new Error(`GitHub API error: ${res.statusCode} ${data}`));
+          reject(new Error(`GitHub API error: ${res.statusCode} ${data.substring(0, 500)}`));
         }
       });
-    }).on('error', reject);
+    });
+    
+    req.on('error', (error) => {
+      // ネットワークエラーの詳細を提供
+      if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
+        reject(new Error(`GitHub API接続エラー: ${error.code} - ${error.message}\n` +
+          `URL: ${url}\n` +
+          `ネットワーク接続を確認してください。`));
+      } else {
+        reject(new Error(`GitHub API接続エラー: ${error.message}`));
+      }
+    });
+    
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(`GitHub API接続タイムアウト: ${url}`));
+    });
+    
+    req.setTimeout(30000);
   });
 }
 
