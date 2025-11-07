@@ -25,7 +25,7 @@ export async function loadSpec(specPath = join(PROJECT_ROOT, 'codex.spec.yaml'))
   const spec = yaml.load(yamlContent);
 
   // Load JSON Schema
-  const schemaPath = join(PROJECT_ROOT, 'schemas', 'codex-spec.schema.json');
+  const schemaPath = join(PROJECT_ROOT, '..', 'schemas', 'codex-spec.schema.json');
   const schemaContent = fs.readFileSync(schemaPath, 'utf8');
   const schema = JSON.parse(schemaContent);
 
