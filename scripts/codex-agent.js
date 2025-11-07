@@ -188,14 +188,38 @@ async function main() {
   try {
     console.log(`🚀 Starting Codex-powered agent for Issue #${ISSUE_NUMBER}`);
     
+    // 環境変数の確認
     if (!OPENAI_API_KEY) {
       throw new Error('OPENAI_API_KEY or LLM_API_KEY environment variable is required');
     }
+    
+    if (!GITHUB_TOKEN) {
+      throw new Error('GITHUB_TOKEN environment variable is required');
+    }
+    
+    if (!REPOSITORY) {
+      throw new Error('REPOSITORY environment variable is required (format: owner/repo)');
+    }
+    
+    if (!ISSUE_NUMBER) {
+      throw new Error('ISSUE_NUMBER environment variable is required');
+    }
 
     // Issueを取得
-    console.log(`📋 Fetching Issue #${ISSUE_NUMBER}...`);
-    const issue = await fetchIssue(ISSUE_NUMBER);
-    console.log(`✅ Issue fetched: ${issue.title}`);
+    console.log(`📋 Fetching Issue #${ISSUE_NUMBER} from ${REPOSITORY}...`);
+    let issue;
+    try {
+      issue = await fetchIssue(ISSUE_NUMBER);
+      console.log(`✅ Issue fetched: ${issue.title}`);
+    } catch (fetchError) {
+      console.error(`❌ Failed to fetch issue: ${fetchError.message}`);
+      console.error(`\n💡 トラブルシューティング:`);
+      console.error(`   1. ネットワーク接続を確認してください`);
+      console.error(`   2. GITHUB_TOKENが正しく設定されているか確認してください`);
+      console.error(`   3. REPOSITORY環境変数が正しい形式か確認してください (例: owner/repo)`);
+      console.error(`   4. GitHub APIのステータスを確認: https://githubstatus.com`);
+      throw fetchError;
+    }
 
     // Issueを分析
     console.log('🔍 Analyzing issue...');
