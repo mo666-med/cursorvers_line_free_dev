@@ -1,54 +1,136 @@
-// Front Door: Webhook受信 → GitHub repository_dispatch
-// Supabase Edge Function / Cloudflare Workers 両対応
+// Front Door: Webhook relay for LINE and Manus Progress events.
+// Handles signature verification, payload sanitization, dedupe caching, and
+// dispatching to GitHub repository_dispatch.
 
-import { createHmac } from "https://deno.land/std@0.224.0/node/crypto.ts";
+import { createHmac } from "node:crypto";
+import type { KvClient } from "./kv.ts";
+import { getKv } from "./kv.ts";
+import { deriveLineSpecEvent } from "../../scripts/orchestration/line-event-mapper.js";
+// @ts-ignore
+import {
+  createDedupKey,
+  detectEventType,
+  hashUserId,
+  sanitizePayload,
+  resolveDedupeTtl,
+} from "../../scripts/orchestration/relay-sanitizer.mjs";
 
-interface Env {
+interface RelayEnv {
   GH_OWNER: string;
   GH_REPO: string;
   GH_PAT: string;
   LINE_CHANNEL_SECRET?: string;
   MANUS_API_KEY?: string;
+  HASH_SALT?: string;
   FEATURE_BOT_ENABLED?: string;
+  DEDUPE_TTL_SECONDS?: string;
 }
 
+type EventType = "line_event" | "manus_progress" | "unknown";
+
+const DEFAULT_DEDUPE_TTL = 120; // seconds
+const memoryDedupeCache = new Map<string, number>();
+
+function log(level: "info" | "warn" | "error", message: string, meta: Record<string, unknown> = {}) {
+  const entry = { level, message, ...meta };
+  console[level === "error" ? "error" : "log"](JSON.stringify(entry));
+}
+
+export function verifySignature(body: string, signature: string | null, env: RelayEnv): boolean {
+  if (!signature) return false;
+
+  // LINE sends a base64 encoded HMAC without prefix.
+  const normalizedSig = signature.replace(/^sha256=/i, "");
+  if (env.LINE_CHANNEL_SECRET) {
+    try {
+      const hash = createHmac("sha256", env.LINE_CHANNEL_SECRET).update(body).digest("base64");
+      if (hash === normalizedSig) {
+        return true;
+      }
+    } catch (error) {
+      log("warn", "Failed to compute LINE signature", { error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  if (signature.startsWith("Bearer ") && env.MANUS_API_KEY) {
+    return signature.substring("Bearer ".length) === env.MANUS_API_KEY;
+  }
+
+  return false;
+}
+
+
+
+
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
-    // Kill-Switch: 即座に停止
+  async fetch(req: Request, env: RelayEnv): Promise<Response> {
     if (env.FEATURE_BOT_ENABLED === "false") {
-      return new Response(JSON.stringify({ error: "Bot is disabled" }), {
+      log("warn", "Front Door disabled via FEATURE_BOT_ENABLED");
+      return new Response(JSON.stringify({ error: "bot_disabled" }), {
         status: 503,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    // 署名検証
-    const signature = req.headers.get("X-Line-Signature") || req.headers.get("Authorization");
-    if (!signature) {
-      return new Response(JSON.stringify({ error: "Missing signature" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    const signature = req.headers.get("X-Line-Signature") ?? req.headers.get("Authorization");
+    const rawBody = await req.text();
 
-    const body = await req.text();
-    const isValid = verifySignature(body, signature, env);
-    if (!isValid) {
-      return new Response(JSON.stringify({ error: "Invalid signature" }), {
+    if (!verifySignature(rawBody, signature, env)) {
+      log("warn", "Signature verification failed", { hasSignature: Boolean(signature) });
+      return new Response(JSON.stringify({ error: "signature_invalid" }), {
         status: 403,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    // イベントタイプ判定
-    const payload = JSON.parse(body);
+    let payload: unknown;
+    try {
+      payload = rawBody ? JSON.parse(rawBody) : {};
+    } catch (error) {
+      log("error", "Failed to parse JSON payload", { error: error instanceof Error ? error.message : String(error) });
+      return new Response(JSON.stringify({ error: "invalid_json" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     const eventType = detectEventType(payload);
+    if (eventType === "unknown") {
+      log("warn", "Unknown event type received", { sample: rawBody.slice(0, 128) });
+      return new Response(JSON.stringify({ error: "unsupported_event" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
 
-    // 個人情報を最小化
-    const sanitized = sanitizePayload(payload, eventType);
+    const dedupeKey = createDedupKey(eventType, payload, {
+      hashSalt: env.HASH_SALT ?? "",
+      signature,
+      rawBody,
+    });
+    const ttl = resolveDedupeTtl(env.DEDUPE_TTL_SECONDS, DEFAULT_DEDUPE_TTL);
+    const isFresh = await markEventAsSeen(dedupeKey, ttl);
 
-    // GitHub repository_dispatch
-    const ghResp = await fetch(
+    if (!isFresh) {
+      log("info", "Duplicate event suppressed", { eventType, dedupeKey });
+      return new Response(JSON.stringify({ status: "duplicate" }), {
+        status: 202,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const sanitized = sanitizePayload(payload, eventType, {
+      hashSalt: env.HASH_SALT ?? "",
+      redactLineMessage: (env as Record<string, string | undefined>).REDACT_LINE_MESSAGE === "true",
+      deriveLineEvent: (rawEvent: Record<string, unknown>) => deriveLineSpecEvent(rawEvent),
+    });
+    const clientPayload =
+      sanitized && typeof sanitized === "object"
+        ? { ...(sanitized as Record<string, unknown>), dedupe_key: dedupeKey }
+        : { value: sanitized, dedupe_key: dedupeKey };
+    log("info", "Dispatching event to GitHub", { eventType, dedupeKey });
+
+    const response = await fetch(
       `https://api.github.com/repos/${env.GH_OWNER}/${env.GH_REPO}/dispatches`,
       {
         method: "POST",
@@ -59,114 +141,32 @@ export default {
         },
         body: JSON.stringify({
           event_type: eventType,
-          client_payload: sanitized,
+          client_payload: clientPayload,
         }),
-      }
+      },
     );
 
-    if (!ghResp.ok) {
-      const errorText = await ghResp.text();
-      console.error(`GitHub dispatch failed: ${ghResp.status} ${errorText}`);
-      return new Response(
-        JSON.stringify({ error: `GH dispatch failed: ${ghResp.status}` }),
-        {
-          status: 502,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+    if (!response.ok) {
+      const text = await response.text();
+      log("error", "GitHub dispatch failed", { status: response.status, text: text.slice(0, 256) });
+      return new Response(JSON.stringify({ error: "dispatch_failed", status: response.status }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
-    return new Response(JSON.stringify({ status: "ok" }), {
+    return new Response(JSON.stringify({ status: "ok", event_type: eventType }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   },
 };
 
-function verifySignature(body: string, signature: string, env: Env): boolean {
-  // LINE署名検証
-  if (signature.startsWith("sha256=") && env.LINE_CHANNEL_SECRET) {
-    const hash = createHmac("sha256", env.LINE_CHANNEL_SECRET)
-      .update(body)
-      .digest("base64");
-    return signature === hash;
-  }
-
-  // Manus署名検証（Bearer token）
-  if (signature.startsWith("Bearer ") && env.MANUS_API_KEY) {
-    const token = signature.replace("Bearer ", "");
-    return token === env.MANUS_API_KEY;
-  }
-
-  return false;
-}
-
-function detectEventType(payload: any): string {
-  // Manus Progress Event
-  if (payload.event_type && payload.task_id) {
-    return "manus_progress";
-  }
-
-  // LINE Event
-  if (payload.events && Array.isArray(payload.events)) {
-    return "line_event";
-  }
-
-  return "unknown";
-}
-
-function sanitizePayload(payload: any, eventType: string): any {
-  if (eventType === "manus_progress") {
-    // ProgressEvent v1.1: 個人情報を除外
-    return {
-      event_type: payload.event_type,
-      task_id: payload.task_id,
-      step_id: payload.step_id || null,
-      ts: payload.ts || new Date().toISOString(),
-      idempotency_key: payload.idempotency_key,
-      plan_title: payload.plan_title,
-      metrics: payload.metrics || {},
-      context: payload.context || {},
-      preview: payload.preview || null,
-      error: payload.error || null,
-    };
-  }
-
-  if (eventType === "line_event") {
-    // LINE Event: user_idをハッシュ化
-    const events = payload.events.map((e: any) => ({
-      type: e.type,
-      timestamp: e.timestamp,
-      source: {
-        type: e.source.type,
-        userId: hashUserId(e.source.userId),
-      },
-      replyToken: e.replyToken,
-      message: e.message
-        ? {
-            type: e.message.type,
-            id: e.message.id,
-            text: e.message.text,
-          }
-        : null,
-    }));
-
-    return {
-      destination: payload.destination,
-      events,
-    };
-  }
-
-  return payload;
-}
-
-function hashUserId(userId: string): string {
-  if (!userId) return "";
-  // SHA-256ハッシュ化（簡易実装）
-  const encoder = new TextEncoder();
-  const data = encoder.encode(userId);
-  return Array.from(data)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
-    .substring(0, 16);
-}
+export const __testOnly = {
+  clearMemoryDedupeCache() {
+    memoryDedupeCache.clear();
+  },
+  memoryCacheSize() {
+    return memoryDedupeCache.size;
+  },
+};

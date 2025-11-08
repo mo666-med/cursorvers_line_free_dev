@@ -1,0 +1,38 @@
+name: Plan Validator
+x-owner: devops
+
+on:
+  pull_request:
+    paths:
+      - 'orchestration/plan/**/*.json'
+      - 'scripts/plan/**'
+      - '.github/workflows/plan-validator.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'orchestration/plan/**/*.json'
+      - 'scripts/plan/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate Plans
+        run: |
+          node scripts/plan/validate-plan.js \
+            orchestration/plan/current_plan.json \
+            orchestration/plan/production/current_plan.json
+

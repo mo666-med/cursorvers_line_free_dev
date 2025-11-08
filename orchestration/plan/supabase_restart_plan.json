@@ -1,0 +1,106 @@
+{
+  "id": "supabase_restart_v1",
+  "version": "2025-11-04",
+  "title": "Supabaseプロジェクト再起動",
+  "metadata": {
+    "channel": "supabase",
+    "description": "Supabaseプロジェクトを再起動して、PostgRESTが最新のスキーマを読み込むようにする"
+  },
+  "risk": {
+    "level": "medium",
+    "reasons": [
+      "再起動中は一時的なサービス停止が発生する可能性がある（通常1-2分）"
+    ],
+    "approval": "not_required"
+  },
+  "steps": [
+    {
+      "id": "access_supabase_settings",
+      "action": "browser.navigate",
+      "connector": "browser",
+      "payload": {
+        "url": "https://supabase.com/dashboard/project/haaxgwyimoqzzxzdaeep/settings/infrastructure",
+        "wait_for": "infrastructure-settings"
+      },
+      "idempotency_key": "supabase_settings_access",
+      "on_error": "abort"
+    },
+    {
+      "id": "find_restart_button",
+      "action": "browser.find_element",
+      "connector": "browser",
+      "payload": {
+        "selector": "button:contains('Restart')",
+        "description": "Restart button in Infrastructure settings"
+      },
+      "idempotency_key": "find_restart_button",
+      "on_error": "abort"
+    },
+    {
+      "id": "confirm_restart",
+      "action": "browser.click",
+      "connector": "browser",
+      "payload": {
+        "element": "restart_button",
+        "wait_for": "confirmation_dialog"
+      },
+      "idempotency_key": "confirm_restart",
+      "on_error": "abort"
+    },
+    {
+      "id": "execute_restart",
+      "action": "browser.click",
+      "connector": "browser",
+      "payload": {
+        "element": "confirm_button",
+        "wait_for": "restart_in_progress"
+      },
+      "idempotency_key": "execute_restart",
+      "on_error": "abort"
+    },
+    {
+      "id": "wait_for_restart_completion",
+      "action": "wait",
+      "connector": "internal",
+      "payload": {
+        "seconds": 120,
+        "description": "Wait for Supabase project to restart (typically 1-2 minutes)"
+      },
+      "idempotency_key": "wait_restart_completion",
+      "on_error": "abort"
+    },
+    {
+      "id": "verify_restart_success",
+      "action": "browser.navigate",
+      "connector": "browser",
+      "payload": {
+        "url": "https://supabase.com/dashboard/project/haaxgwyimoqzzxzdaeep",
+        "wait_for": "dashboard_loaded"
+      },
+      "idempotency_key": "verify_restart_success",
+      "on_error": "abort"
+    },
+    {
+      "id": "verify_schema_cache",
+      "action": "browser.navigate",
+      "connector": "browser",
+      "payload": {
+        "url": "https://supabase.com/dashboard/project/haaxgwyimoqzzxzdaeep/sql/new",
+        "wait_for": "sql-editor"
+      },
+      "idempotency_key": "verify_schema_cache",
+      "on_error": "abort"
+    },
+    {
+      "id": "test_column_access",
+      "action": "browser.execute_sql",
+      "connector": "browser",
+      "payload": {
+        "sql": "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'line_members' AND column_name IN ('first_opt_in_at', 'consent_guardrail', 'cta_tags') ORDER BY column_name;"
+      },
+      "idempotency_key": "test_column_access",
+      "on_error": "abort"
+    }
+  ]
+}
+

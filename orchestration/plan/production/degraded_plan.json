@@ -26,10 +26,14 @@
           "user_hash": "{{HASHED_USER_ID}}",
           "plan_id": "line_degraded_v1",
           "plan_version": "2025-11-03",
+          "plan_variant": "degraded",
           "event_type": "{{EVENT_TYPE}}",
           "payload": "{{EVENT_PAYLOAD}}",
           "decision": "proceed",
+          "manus_points_consumed": null,
+          "retry_after_seconds": null,
           "status": "queued",
+          "dedupe_key": "{{EVENT_ID}}:degraded",
           "evidence": {
             "degraded_reason": "{{DEGRADED_TRIGGER_REASON}}"
           }

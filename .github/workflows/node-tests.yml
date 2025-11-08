@@ -1,0 +1,60 @@
+name: Node Tests
+x-owner: devops
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  node-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install || echo "No dependencies to install"
+
+      - name: Run Node tests
+        run: npm test
+
+      - name: Run action script tests
+        run: npm run test:actions
+
+      - name: Run lint suite
+        run: npm run lint
+
+      - name: Validate codex spec
+        run: npm run lint:spec
+
+      - name: Verify runtime configuration registry
+        run: npm run runtime:verify
+
+      - name: Verify vendor checksums
+        run: npm run vendor:verify
+
+      - name: Verify workflow inventory
+        run: npm run workflows:check
+
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Lint workflows with actionlint
+        uses: rhysd/actionlint@v1

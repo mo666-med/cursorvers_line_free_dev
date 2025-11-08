@@ -1,4 +1,5 @@
 name: Manus Progress Handler
+x-owner: devops
 
 on:
   repository_dispatch:
@@ -6,68 +7,137 @@ on:
   workflow_dispatch:
 
 permissions:
-  # 外部API接続に必要な権限を明示的に設定
-  contents: write      # ファイル作成・更新のため
-  actions: write      # 他のワークフローをトリガーするため
-  issues: write       # Issue作成のため
-  pull-requests: write # PR作成のため
+  contents: write
+  actions: read
+  issues: write
+  pull-requests: write
 
 jobs:
   handle-progress:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    
+    timeout-minutes: 12
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Validate configuration
+        uses: ./.github/actions/validate-config
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: manus-progress.yml
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SKIP_CONFIG_VALIDATION: ${{ env.SKIP_CONFIG_VALIDATION }}
+
+      - name: Check runtime parameters
+        uses: ./.github/actions/check-runtime-config
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MANUS_ENABLED: ${{ vars.MANUS_ENABLED }}
+          MANUS_BASE_URL: ${{ vars.MANUS_BASE_URL }}
+          MANUS_API_KEY: ${{ secrets.MANUS_API_KEY }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Parse Progress Event
-        id: parse
+      - name: Persist Progress Payload
+        id: event
         run: |
-          EVENT='${{ github.event.client_payload }}'
-          echo "event_type=$(echo $EVENT | jq -r '.event_type')" >> $GITHUB_OUTPUT
-          echo "task_id=$(echo $EVENT | jq -r '.task_id')" >> $GITHUB_OUTPUT
-          echo "step_id=$(echo $EVENT | jq -r '.step_id // empty')" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          mkdir -p tmp
+          printf '%s\n' '${{ toJson(github.event.client_payload) }}' > tmp/progress-event.json
+          DECISION=$(jq -r '.decision // .plan_delta.decision // "proceed"' tmp/progress-event.json)
+          TASK_ID=$(jq -r '.task_id // .progress_id // "unknown"' tmp/progress-event.json)
+          echo "decision=$DECISION" >> "$GITHUB_OUTPUT"
+          echo "task_id=$TASK_ID" >> "$GITHUB_OUTPUT"
+          echo "payload_path=tmp/progress-event.json" >> "$GITHUB_OUTPUT"
 
-      - name: Log Progress Event
-        run: |
-          mkdir -p logs/progress
-          TIMESTAMP=$(date -u +"%Y%m%d_%H%M%S")
-          echo '${{ github.event.client_payload }}' | jq . > "logs/progress/${TIMESTAMP}_${{ steps.parse.outputs.task_id }}.json"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add logs/progress/*.json
-          git commit -m "chore: log progress event ${{ steps.parse.outputs.task_id }}" || exit 0
-          git push
-
-      - name: Call GPT for Analysis
+      - name: Upsert progress event into Supabase
+        id: supabase
         env:
-          LLM_ENDPOINT: ${{ secrets.LLM_ENDPOINT }}
-          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          # GPT解析ロジック（実装が必要）
-          echo "Analyzing progress event..."
+          set -euo pipefail
+          OUTPUT=$(node scripts/vendor/supabase/upsert-progress-event.js "${{ steps.event.outputs.payload_path }}" 2>&1 || true)
+          echo "$OUTPUT" | tee tmp/progress-supabase.json
+          STATUS=$(echo "$OUTPUT" | jq -r '.status // "error"' 2>/dev/null || echo "error")
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          if [ "$STATUS" != "ok" ]; then
+            echo "Supabase upsert did not succeed (status=$STATUS)"
+            exit 1
+          fi
 
-      - name: Update Plan Delta
-        if: success()
+      - name: Evaluate Manus decision
+        id: decision
         run: |
-          # PlanDelta更新ロジック（実装が必要）
-          echo "Updating plan delta..."
+          set -euo pipefail
+          DECISION=$(jq -r '.decision // .plan_delta.decision // "proceed"' "${{ steps.event.outputs.payload_path }}")
+          RETRY=$(jq -r '.plan_delta.retry_after_seconds // .retry_after_seconds // empty' "${{ steps.event.outputs.payload_path }}")
+          VARIANT=$(jq -r '.plan_variant // .context.plan_variant // "production"' "${{ steps.event.outputs.payload_path }}")
+          echo "decision=$DECISION" >> "$GITHUB_OUTPUT"
+          echo "retry_after=${RETRY:-0}" >> "$GITHUB_OUTPUT"
+          echo "plan_variant=$VARIANT" >> "$GITHUB_OUTPUT"
+          if [[ "$DECISION" == "retry" || "$DECISION" == "amended" ]]; then
+            echo "should_retry=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_retry=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Dispatch to Manus
-        if: success()
+      - name: Retry Manus task when permitted
+        id: manus
+        if: ${{ steps.decision.outputs.should_retry == 'true' && vars.DEVELOPMENT_MODE == 'true' && vars.MANUS_ENABLED == 'true' }}
         env:
           MANUS_API_KEY: ${{ secrets.MANUS_API_KEY }}
           MANUS_BASE_URL: ${{ vars.MANUS_BASE_URL }}
         run: |
-          # Manus API呼び出し（実装が必要）
-          echo "Dispatching to Manus..."
+          set -euo pipefail
+          OUTPUT=$(node scripts/manus/retry-task.mjs "${{ steps.event.outputs.payload_path }}" 2>&1 || true)
+          echo "$OUTPUT" | tee tmp/manus-retry.json
+          STATUS=$(echo "$OUTPUT" | jq -r '.status // "error"' 2>/dev/null || echo "error")
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          if [ "$STATUS" = "error" ]; then
+            exit 1
+          fi
 
+      - name: Prepare progress log
+        if: always()
+        id: progress_log
+        run: |
+          set -euo pipefail
+          mkdir -p logs/progress
+          TS=$(date -u +"%Y%m%d_%H%M%S")
+          TARGET="logs/progress/${TS}_${{ steps.event.outputs.task_id }}.json"
+          cp "${{ steps.event.outputs.payload_path }}" "$TARGET"
+          echo "path=$TARGET" >> "$GITHUB_OUTPUT"
 
+      - name: Persist progress log
+        if: ${{ always() && steps.progress_log.outputs.path != '' }}
+        uses: ./.github/actions/persist-progress
+        with:
+          path: ${{ steps.progress_log.outputs.path }}
+          commit-message: chore: log Manus progress
+          artifact-label: manus-progress
+          push-token: ${{ secrets.ACTIONS_CONTENTS_PAT }}
+
+      - name: Summarize outcome
+        if: always()
+        run: |
+          DECISION='${{ steps.decision.outputs.decision }}'
+          RETRY='${{ steps.decision.outputs.retry_after }}'
+          SUPABASE_STATUS='${{ steps.supabase.outputs.status || 'error' }}'
+          MANUS_STATUS='${{ steps.manus.outputs.status || 'skipped' }}'
+          VARIANT='${{ steps.decision.outputs.plan_variant }}'
+          echo "### Manus Progress" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Decision: \\`$DECISION\\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Plan variant: \\`$VARIANT\\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Supabase ingest: \\`$SUPABASE_STATUS\\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Manus retry status: \\`$MANUS_STATUS\\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$DECISION" = "retry" ] && [ -n "$RETRY" ]; then
+            echo "- Retry after: ${RETRY}s" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "- Runbook: [docs/runbooks/line-actions.md](docs/runbooks/line-actions.md)" >> "$GITHUB_STEP_SUMMARY"

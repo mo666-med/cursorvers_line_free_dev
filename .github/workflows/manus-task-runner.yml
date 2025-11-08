@@ -1,0 +1,76 @@
+name: Manus Task Runner
+x-owner: devops
+
+on:
+  repository_dispatch:
+    types: [manus_auto_task]
+  workflow_dispatch:
+  schedule:
+    - cron: '30 2 * * 1' # 毎週月曜 11:30 JST (02:30 UTC) に自動起動
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch-task:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MANUS_ENABLED: ${{ vars.MANUS_ENABLED }}
+
+    steps:
+      - name: Check Manus enabled flag
+        id: enabled
+        run: |
+          VALUE="${MANUS_ENABLED:-true}"
+          echo "manus_enabled=$VALUE" >> "$GITHUB_OUTPUT"
+          if [ "$VALUE" != "true" ]; then
+            echo "⚠️ MANUS_ENABLED is $VALUE. Skipping Manus task dispatch."
+            exit 0
+          fi
+
+      - name: Checkout repository
+        if: steps.enabled.outputs.manus_enabled == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: steps.enabled.outputs.manus_enabled == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Ensure plan files
+        if: steps.enabled.outputs.manus_enabled == 'true'
+        id: plan
+        run: |
+          PLAN_SRC="orchestration/plan/production/current_plan.json"
+          PLAN_DST="orchestration/plan/current_plan.json"
+          if [ ! -f "$PLAN_SRC" ]; then
+            echo "❌ Production plan not found at $PLAN_SRC"
+            exit 1
+          fi
+          mkdir -p orchestration/plan
+          cp "$PLAN_SRC" "$PLAN_DST"
+          echo "plan_path=$PLAN_DST" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch Manus task
+        if: steps.enabled.outputs.manus_enabled == 'true'
+        run: |
+          node scripts/manus-api.js create \
+            "orchestration/MANUS_EXECUTION_BRIEF_v2.0.txt" \
+            "${{ steps.plan.outputs.plan_path }}" \
+            --webhook "${{ secrets.PROGRESS_WEBHOOK_URL }}"
+        env:
+          MANUS_API_KEY: ${{ secrets.MANUS_API_KEY }}
+          MANUS_BASE_URL: ${{ vars.MANUS_BASE_URL }}
+          PROGRESS_WEBHOOK_URL: ${{ secrets.PROGRESS_WEBHOOK_URL }}
+
+      - name: Summary
+        if: steps.enabled.outputs.manus_enabled == 'true'
+        run: |
+          echo "### 🤖 Manus Task Dispatched" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Plan: ${{ steps.plan.outputs.plan_path }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Brief: orchestration/MANUS_EXECUTION_BRIEF_v2.0.txt" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Trigger: ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"
+
+

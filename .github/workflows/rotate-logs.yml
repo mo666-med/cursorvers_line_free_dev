@@ -1,0 +1,42 @@
+name: Rotate Logs
+x-owner: devops
+
+on:
+  schedule:
+    # 毎週月曜日の午前3時（JST）に実行
+    - cron: '0 18 * * 1'  # UTC 18:00 = JST 03:00 (next day)
+  workflow_dispatch:  # 手動実行も可能
+
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # ログファイルのコミットに必要
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 全履歴を取得
+    
+      - name: Setup Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+    
+      - name: Rotate logs
+        env:
+          GITHUB_ACTIONS: true
+        run: |
+          chmod +x scripts/rotate-logs.sh
+          ./scripts/rotate-logs.sh
+    
+      - name: Summary
+        run: |
+          echo "## 📋 Log Rotation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "ログローテーションが完了しました。" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "詳細はコミットログを確認してください。" >> $GITHUB_STEP_SUMMARY
+
+

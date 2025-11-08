@@ -1,0 +1,72 @@
+{
+  "id": "supabase_schema_cache_refresh_v1",
+  "version": "2025-11-04",
+  "title": "Supabaseスキーマキャッシュリフレッシュ",
+  "metadata": {
+    "channel": "supabase",
+    "description": "SupabaseのPostgRESTスキーマキャッシュをリフレッシュして、line_membersテーブルのカラムが認識されるようにする"
+  },
+  "risk": {
+    "level": "low",
+    "reasons": [
+      "スキーマキャッシュのリフレッシュは安全な操作（データへの影響なし）"
+    ],
+    "approval": "not_required"
+  },
+  "steps": [
+    {
+      "id": "access_supabase_dashboard",
+      "action": "browser.navigate",
+      "connector": "browser",
+      "payload": {
+        "url": "https://supabase.com/dashboard/project/haaxgwyimoqzzxzdaeep/sql/new",
+        "wait_for": "sql-editor"
+      },
+      "idempotency_key": "supabase_dashboard_access",
+      "on_error": "abort"
+    },
+    {
+      "id": "refresh_schema_cache_multiple",
+      "action": "browser.execute_sql",
+      "connector": "browser",
+      "payload": {
+        "sql": "NOTIFY pgrst, 'reload schema';",
+        "repeat": 10,
+        "delay_seconds": 5
+      },
+      "idempotency_key": "schema_cache_refresh",
+      "on_error": "abort"
+    },
+    {
+      "id": "verify_columns",
+      "action": "browser.execute_sql",
+      "connector": "browser",
+      "payload": {
+        "sql": "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'line_members' AND column_name IN ('first_opt_in_at', 'consent_guardrail', 'cta_tags') ORDER BY column_name;"
+      },
+      "idempotency_key": "verify_line_members_columns",
+      "on_error": "abort"
+    },
+    {
+      "id": "wait_for_cache_update",
+      "action": "wait",
+      "connector": "internal",
+      "payload": {
+        "seconds": 60
+      },
+      "idempotency_key": "wait_cache_update",
+      "on_error": "abort"
+    },
+    {
+      "id": "final_verification",
+      "action": "browser.execute_sql",
+      "connector": "browser",
+      "payload": {
+        "sql": "SELECT COUNT(*) as column_count FROM information_schema.columns WHERE table_name = 'line_members' AND column_name IN ('first_opt_in_at', 'consent_guardrail', 'cta_tags');"
+      },
+      "idempotency_key": "final_column_verification",
+      "on_error": "abort"
+    }
+  ]
+}
+

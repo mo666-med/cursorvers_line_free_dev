@@ -1,0 +1,39 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    // Git Graphの表示設定
+    "git-graph.openRepoInsteadOfRefresh": true,
+    "git-graph.maxDepthOfRepoSearch": 3,
+    
+    // サイドバーの表示設定
+    "workbench.sideBar.location": "left",
+    
+    // ターミナルの配置設定
+    "workbench.panel.defaultLocation": "bottom",
+    "workbench.panel.opensMaximized": "never",
+    
+    // エディタのレイアウト設定
+    "workbench.editor.splitInGroupLayout": "horizontal",
+    
+    // パネルのサイズ設定
+    "workbench.panel.bottom.size": 300,
+    
+    // チャットパネルの設定（Cursor固有）
+    "workbench.view.chat.location": "right",
+    
+    // 拡張機能の推奨設定
+    "extensions.recommendations": [
+      "mhutchie.git-graph"
+    ]
+  },
+  "extensions": {
+    "recommendations": [
+      "mhutchie.git-graph"
+    ]
+  }
+}
+
