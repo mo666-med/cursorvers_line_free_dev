@@ -1,0 +1,47 @@
+name: Deploy Supabase Edge Functions
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/functions/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+  DISCORD_SYSTEM_WEBHOOK: ${{ secrets.DISCORD_SYSTEM_WEBHOOK }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy line-bot
+        run: supabase functions deploy line-bot --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Deploy stats-exporter
+        run: supabase functions deploy stats-exporter --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Deploy health-check
+        run: supabase functions deploy health-check --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Send Discord notification
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          curl -X POST "$DISCORD_SYSTEM_WEBHOOK" \
+            -H "Content-Type: application/json" \
+            -d "{\"content\":\":rocket: **Deploy ${STATUS}**\\nRepo: $GITHUB_REPOSITORY\\nCommit: ${GITHUB_SHA}\\nTime (UTC): ${TIMESTAMP}\"}"
+
