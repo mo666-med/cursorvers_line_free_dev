@@ -77,7 +77,7 @@ serve(async (req) => {
   const { data: members, error: membersError } = await supabase
     .from("library_members")
     .select(
-      "email,line_user_id,membership_tier,subscription_status,active_months,next_billing_at,last_payment_at,stripe_customer_email,last_interaction_at",
+      "line_user_id,membership_tier,subscription_status,active_months,next_billing_at,last_payment_at,stripe_customer_email,last_interaction_at",
     );
 
   if (membersError) {
@@ -85,7 +85,7 @@ serve(async (req) => {
   }
 
   const membershipRows = (members ?? []).map((member) => [
-    member.email ?? "",
+    member.stripe_customer_email ?? "",
     member.line_user_id ?? "",
     member.membership_tier ?? "",
     member.subscription_status ?? "",
