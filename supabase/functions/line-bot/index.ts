@@ -105,7 +105,7 @@ serve(async (req) => {
       normalized_keyword: replyContext.normalizedKeyword,
       risk_level: replyContext.riskLevel,
       contains_phi: containsPhi,
-      membership_email: memberProfile?.email ?? null,
+      membership_email: memberProfile?.stripe_customer_email ?? null,
       membership_tier: memberProfile?.membership_tier ?? null,
       subscription_status: memberProfile?.subscription_status ?? null,
       billing_cycle_anchor: memberProfile?.next_billing_at ?? null,
@@ -274,7 +274,7 @@ async function fetchMemberProfile(
   const { data, error } = await supabase
     .from("library_members")
     .select(
-      "email,membership_tier,subscription_status,next_billing_at,active_months,stripe_customer_email",
+      "membership_tier,subscription_status,next_billing_at,active_months,stripe_customer_email,line_user_id",
     )
     .eq("line_user_id", lineUserId)
     .maybeSingle();
@@ -334,12 +334,12 @@ type ReplyContext = {
 };
 
 type MemberProfile = {
-  email: string | null;
   membership_tier: string | null;
   subscription_status: string | null;
   next_billing_at: string | null;
   active_months: number | null;
   stripe_customer_email: string | null;
+  line_user_id: string | null;
 };
 
 type LineEventPayload = {
