@@ -481,15 +481,24 @@ export function getNextQuestion(
  */
 export function getConclusion(state: DiagnosisState): string[] | null {
   const flow = getFlowForKeyword(state.keyword);
-  if (!flow) return null;
+  if (!flow) {
+    console.error("[diagnosis-flow] Flow not found for keyword:", state.keyword);
+    return null;
+  }
 
   // 3問すべて回答済みか確認
   if (state.answers.length < flow.totalQuestions) {
+    console.warn(`[diagnosis-flow] Not enough answers: ${state.answers.length} < ${flow.totalQuestions}`);
     return null;
   }
 
   // layer2 の回答（関心領域）で結論を決定
   const interest = state.answers[1];
+  if (!interest) {
+    console.error("[diagnosis-flow] No interest found in answers:", state.answers);
+    return null;
+  }
+  
   const hardcodedIds = flow.conclusionsByInterest[interest];
   
   // ハードコードされた記事IDがあればそれを返す
@@ -501,19 +510,6 @@ export function getConclusion(state: DiagnosisState): string[] | null {
   // （将来的に conclusionsByInterest を空にして、タグベースに完全移行可能）
   console.log(`[diagnosis-flow] No hardcoded articles for "${interest}", using tag-based fallback`);
   return null; // タグベースは getArticlesByTag で直接取得
-}
-
-/**
- * 結論をタグベースで取得するかどうかを判定
- */
-export function shouldUseTagBasedConclusion(state: DiagnosisState): boolean {
-  const flow = getFlowForKeyword(state.keyword);
-  if (!flow) return false;
-  
-  const interest = state.answers[1];
-  const hardcodedIds = flow.conclusionsByInterest[interest];
-  
-  return !hardcodedIds || hardcodedIds.length === 0;
 }
 
 /**
