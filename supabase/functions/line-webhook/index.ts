@@ -69,6 +69,9 @@ const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
 const MAX_POLISH_PER_DAY = Number(Deno.env.get("MAX_POLISH_PER_DAY") ?? "5");
 const MAX_INPUT_LENGTH = Number(Deno.env.get("MAX_INPUT_LENGTH") ?? "3000");
 
+// Discord コミュニティリンク
+const DISCORD_INVITE_URL = "https://discord.gg/hmMz3pHH";
+
 if (!LINE_CHANNEL_ACCESS_TOKEN || !LINE_CHANNEL_SECRET) {
   console.warn(
     "[line-webhook] LINE environment variables are not fully set."
@@ -353,7 +356,9 @@ async function handleEvent(event: LineEvent): Promise<void> {
       try {
         const result = await runPromptPolisher(rawInput);
         if (result.success && result.polishedPrompt) {
-          await pushText(lineUserId, result.polishedPrompt);
+          const messageWithDiscord = result.polishedPrompt + 
+            "\n\n---\n💬 ご質問・ご相談は Discord で受付中\n" + DISCORD_INVITE_URL;
+          await pushText(lineUserId, messageWithDiscord);
         } else {
           await pushText(
             lineUserId,
@@ -404,7 +409,9 @@ async function handleEvent(event: LineEvent): Promise<void> {
       try {
         const result = await runRiskChecker(rawInput);
         if (result.success && result.formattedMessage) {
-          await pushText(lineUserId, result.formattedMessage);
+          const messageWithDiscord = result.formattedMessage + 
+            "\n\n---\n💬 詳しい相談は Discord で受付中\n" + DISCORD_INVITE_URL;
+          await pushText(lineUserId, messageWithDiscord);
           
           // riskFlags を記録（非同期で実行）
           if (result.riskFlags && result.riskFlags.length > 0) {
@@ -458,7 +465,26 @@ async function handleEvent(event: LineEvent): Promise<void> {
     return;
   }
 
-  // 4) それ以外 → ヘルプメッセージ + クイックリプライ
+  // 4) 「コミュニティ」選択 → Discord 招待
+  if (trimmed === "コミュニティ") {
+    if (replyToken) {
+      await replyText(
+        replyToken,
+        [
+          "🎉 Cursorvers コミュニティへようこそ！",
+          "",
+          "Discord で医療 × AI の最新情報や、",
+          "他のメンバーとの交流ができます。",
+          "",
+          "▼ 参加はこちら",
+          DISCORD_INVITE_URL,
+        ].join("\n")
+      );
+    }
+    return;
+  }
+
+  // 5) それ以外 → ヘルプメッセージ + クイックリプライ
   if (replyToken) {
     const helpMessage = [
       "Pocket Defense Tool",
