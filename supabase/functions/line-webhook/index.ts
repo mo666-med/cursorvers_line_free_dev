@@ -7,21 +7,27 @@
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// lib モジュール
+import { DISCORD_INVITE_URL, COURSE_KEYWORDS, type DiagnosisKeyword } from "./lib/constants.ts";
 import { runPromptPolisher } from "./lib/prompt-polisher.ts";
 import { runRiskChecker } from "./lib/risk-checker.ts";
 import { buildCourseEntryMessage } from "./lib/course-router.ts";
+import {
+  type DiagnosisState,
+  getFlowForKeyword,
+  getNextQuestion,
+  getConclusion,
+  isValidAnswer,
+  buildQuestionMessage,
+  buildConclusionMessage,
+  buildDiagnosisStartMessage,
+} from "./lib/diagnosis-flow.ts";
+import { getArticlesByIds } from "./lib/note-recommendations.ts";
 
 // =======================
 // 型定義
 // =======================
-
-type DiagnosisKeyword =
-  | "病院AIリスク診断"
-  | "SaMDスタートアップ診断"
-  | "医療データガバナンス診断"
-  | "臨床知アセット診断"
-  | "教育AI導入診断"
-  | "次世代AI実装診断";
 
 type InteractionType = "prompt_polisher" | "risk_checker" | "course_entry";
 
@@ -65,12 +71,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY =
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
 const MAX_POLISH_PER_DAY = Number(Deno.env.get("MAX_POLISH_PER_DAY") ?? "5");
 const MAX_INPUT_LENGTH = Number(Deno.env.get("MAX_INPUT_LENGTH") ?? "3000");
-
-// Discord コミュニティリンク
-const DISCORD_INVITE_URL = "https://discord.gg/hmMz3pHH";
 
 if (!LINE_CHANNEL_ACCESS_TOKEN || !LINE_CHANNEL_SECRET) {
   console.warn(
@@ -101,23 +103,13 @@ function bucketLength(len: number | null | undefined): string | null {
 }
 
 function normalizeKeyword(raw: string): string {
-  // 全角スペース→半角、前後の空白を trim
   return raw.replace(/　/g, " ").trim();
 }
-
-const COURSE_KEYWORDS: DiagnosisKeyword[] = [
-  "病院AIリスク診断",
-  "SaMDスタートアップ診断",
-  "医療データガバナンス診断",
-  "臨床知アセット診断",
-  "教育AI導入診断",
-  "次世代AI実装診断",
-];
 
 function detectCourseKeyword(text: string): DiagnosisKeyword | null {
   const normalized = normalizeKeyword(text);
   const match = COURSE_KEYWORDS.find((kw) => kw === normalized);
-  return (match as DiagnosisKeyword | undefined) ?? null;
+  return match ?? null;
 }
 
 // LINE 署名検証
@@ -288,6 +280,134 @@ async function getTodayPolishCount(userId: string): Promise<number> {
 }
 
 // =======================
+// 診断フロー状態管理
+// =======================
+
+// 診断状態を取得
+async function getDiagnosisState(lineUserId: string): Promise<DiagnosisState | null> {
+  const { data, error } = await supabase
+    .from("users")
+    .select("diagnosis_state")
+    .eq("line_user_id", lineUserId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[line-webhook] getDiagnosisState error", error);
+    return null;
+  }
+
+  return data?.diagnosis_state as DiagnosisState | null;
+}
+
+// 診断状態を更新
+async function updateDiagnosisState(
+  lineUserId: string,
+  state: DiagnosisState | null
+): Promise<void> {
+  const { error } = await supabase
+    .from("users")
+    .update({ diagnosis_state: state })
+    .eq("line_user_id", lineUserId);
+
+  if (error) {
+    console.error("[line-webhook] updateDiagnosisState error", error);
+  }
+}
+
+// 診断状態をクリア
+async function clearDiagnosisState(lineUserId: string): Promise<void> {
+  await updateDiagnosisState(lineUserId, null);
+}
+
+// =======================
+// 機能ハンドラー
+// =======================
+
+// Prompt Polisher ハンドラー
+async function handlePromptPolisher(
+  trimmed: string,
+  lineUserId: string,
+  userId: string,
+  replyToken?: string
+): Promise<void> {
+  const rawInput = trimmed.replace(/^磨いて:|^polish:/, "").trim();
+
+  if (rawInput.length > MAX_INPUT_LENGTH) {
+    if (replyToken) {
+      await replyText(replyToken, `入力が長すぎます（${MAX_INPUT_LENGTH}文字以内）。`);
+    }
+    return;
+  }
+
+  const todayCount = await getTodayPolishCount(userId);
+  if (todayCount >= MAX_POLISH_PER_DAY) {
+    if (replyToken) {
+      await replyText(replyToken, `本日の利用上限（${MAX_POLISH_PER_DAY}回）に達しました。`);
+    }
+    return;
+  }
+
+  if (replyToken) {
+    await replyText(replyToken, "プロンプトを整えています。数秒お待ちください。");
+  }
+
+  void (async () => {
+    try {
+      const result = await runPromptPolisher(rawInput);
+      if (result.success && result.polishedPrompt) {
+        const msg = result.polishedPrompt + "\n\n---\n💬 ご質問は Discord で\n" + DISCORD_INVITE_URL;
+        await pushText(lineUserId, msg);
+      } else {
+        await pushText(lineUserId, result.error ?? "エラーが発生しました。");
+      }
+    } catch (err) {
+      console.error("[line-webhook] prompt_polisher error", err);
+      await pushText(lineUserId, "エラーが発生しました。時間をおいて再度お試しください。");
+    }
+  })();
+
+  await logInteraction({ userId, interactionType: "prompt_polisher", inputLength: rawInput.length });
+}
+
+// Risk Checker ハンドラー
+async function handleRiskChecker(
+  trimmed: string,
+  lineUserId: string,
+  userId: string,
+  replyToken?: string
+): Promise<void> {
+  const rawInput = trimmed.replace(/^check:|^チェック:/, "").trim();
+
+  if (rawInput.length > MAX_INPUT_LENGTH) {
+    if (replyToken) {
+      await replyText(replyToken, `入力が長すぎます（${MAX_INPUT_LENGTH}文字以内）。`);
+    }
+    return;
+  }
+
+  if (replyToken) {
+    await replyText(replyToken, "リスクチェックを実行しています。数秒お待ちください。");
+  }
+
+  void (async () => {
+    try {
+      const result = await runRiskChecker(rawInput);
+      if (result.success && result.formattedMessage) {
+        const msg = result.formattedMessage + "\n\n---\n💬 詳しい相談は Discord で\n" + DISCORD_INVITE_URL;
+        await pushText(lineUserId, msg);
+      } else {
+        await pushText(lineUserId, result.error ?? "エラーが発生しました。");
+      }
+    } catch (err) {
+      console.error("[line-webhook] risk_checker error", err);
+      await pushText(lineUserId, "エラーが発生しました。時間をおいて再度お試しください。");
+    }
+  })();
+
+  await logInteraction({ userId, interactionType: "risk_checker", inputLength: rawInput.length });
+}
+
+// =======================
 // Dispatcher 本体
 // =======================
 
@@ -295,14 +415,11 @@ async function handleEvent(event: LineEvent): Promise<void> {
   const source = event.source;
   const replyToken = event.replyToken;
 
-  // userId がないイベントは対象外（グループ等は当面サポートしない）
   if (!source.userId) return;
   const lineUserId = source.userId;
 
-  // ユーザーを取得 or 新規作成
   const userId = await getOrCreateUser(lineUserId);
 
-  // テキスト取得
   let text: string | null = null;
   if (event.type === "message" && event.message?.type === "text") {
     text = event.message.text;
@@ -310,199 +427,176 @@ async function handleEvent(event: LineEvent): Promise<void> {
     text = event.postback.data;
   }
 
-  if (!text) {
-    // 非対応イベントには何も返さない
-    return;
-  }
+  if (!text) return;
 
   const trimmed = text.trim();
 
-  // 1) Prompt Polisher: 「磨いて:」 or 「polish:」
+  // ========================================
+  // 0) 優先コマンド（診断中でも実行可能）
+  // ========================================
+  
+  // Prompt Polisher
   if (trimmed.startsWith("磨いて:") || trimmed.startsWith("polish:")) {
-    const rawInput = trimmed.replace(/^磨いて:|^polish:/, "").trim();
-
-    // 入力長チェック
-    if (rawInput.length > MAX_INPUT_LENGTH) {
-      if (replyToken) {
-        await replyText(
-          replyToken,
-          `入力が長すぎます（${MAX_INPUT_LENGTH}文字以内にしてください）。\n要約してから再度お試しください。`
-        );
-      }
-      return;
-    }
-
-    // 日次利用回数チェック
-    const todayCount = await getTodayPolishCount(userId);
-    if (todayCount >= MAX_POLISH_PER_DAY) {
-      if (replyToken) {
-        await replyText(
-          replyToken,
-          `本日の利用上限（${MAX_POLISH_PER_DAY}回）に達しました。\n明日またお試しください。`
-        );
-      }
-      return;
-    }
-
-    if (replyToken) {
-      await replyText(
-        replyToken,
-        "プロンプトを整えています。数秒お待ちください。"
-      );
-    }
-
-    // 非同期で実際のPolisher処理を実行
-    void (async () => {
-      try {
-        const result = await runPromptPolisher(rawInput);
-        if (result.success && result.polishedPrompt) {
-          const messageWithDiscord = result.polishedPrompt + 
-            "\n\n---\n💬 ご質問・ご相談は Discord で受付中\n" + DISCORD_INVITE_URL;
-          await pushText(lineUserId, messageWithDiscord);
-        } else {
-          await pushText(
-            lineUserId,
-            result.error ?? "プロンプト整形中にエラーが発生しました。"
-          );
-        }
-      } catch (err) {
-        console.error("[line-webhook] prompt_polisher error", err);
-        await pushText(
-          lineUserId,
-          "プロンプト整形中にエラーが発生しました。時間をおいて再度お試しください。"
-        );
-      }
-    })();
-
-    await logInteraction({
-      userId,
-      interactionType: "prompt_polisher",
-      inputLength: rawInput.length,
-    });
-
+    await handlePromptPolisher(trimmed, lineUserId, userId, replyToken);
     return;
   }
 
-  // 2) Risk Checker: 「check:」 or 「チェック:」
+  // Risk Checker
   if (trimmed.startsWith("check:") || trimmed.startsWith("チェック:")) {
-    const rawInput = trimmed.replace(/^check:|^チェック:/, "").trim();
+    await handleRiskChecker(trimmed, lineUserId, userId, replyToken);
+    return;
+  }
 
-    // 入力長チェック
-    if (rawInput.length > MAX_INPUT_LENGTH) {
+  // ========================================
+  // 1) 診断フロー中かチェック
+  // ========================================
+  const diagnosisState = await getDiagnosisState(lineUserId);
+  
+  if (diagnosisState) {
+    // 「キャンセル」で診断を中断
+    if (trimmed === "キャンセル" || trimmed === "cancel") {
+      await clearDiagnosisState(lineUserId);
       if (replyToken) {
-        await replyText(
-          replyToken,
-          `入力が長すぎます（${MAX_INPUT_LENGTH}文字以内にしてください）。\n要約してから再度お試しください。`
-        );
+        await replyText(replyToken, "診断を中断しました。\n\n下のボタンから再度お試しください。", buildDiagnosisQuickReply());
       }
       return;
     }
 
-    if (replyToken) {
-      await replyText(
-        replyToken,
-        "文章のリスクチェックを実行しています。数秒お待ちください。"
-      );
-    }
-
-    void (async () => {
-      try {
-        const result = await runRiskChecker(rawInput);
-        if (result.success && result.formattedMessage) {
-          const messageWithDiscord = result.formattedMessage + 
-            "\n\n---\n💬 詳しい相談は Discord で受付中\n" + DISCORD_INVITE_URL;
-          await pushText(lineUserId, messageWithDiscord);
-          
-          // riskFlags を記録（非同期で実行）
-          if (result.riskFlags && result.riskFlags.length > 0) {
-            await logInteraction({
-              userId,
-              interactionType: "risk_checker",
-              riskFlags: result.riskFlags,
-              inputLength: rawInput.length,
-            });
-          }
-        } else {
-          await pushText(
-            lineUserId,
-            result.error ?? "リスクチェック中にエラーが発生しました。"
+    // 回答が有効かチェック
+    if (!isValidAnswer(diagnosisState, trimmed)) {
+      if (replyToken) {
+        const question = getNextQuestion(diagnosisState);
+        if (question) {
+          const { text: questionText, quickReply } = buildQuestionMessage(question, diagnosisState.layer);
+          await replyText(
+            replyToken,
+            "選択肢から選んでください。\n\n" + questionText,
+            quickReply as QuickReply
           );
         }
-      } catch (err) {
-        console.error("[line-webhook] risk_checker error", err);
-        await pushText(
-          lineUserId,
-          "リスクチェック中にエラーが発生しました。時間をおいて再度お試しください。"
-        );
       }
-    })();
+      return;
+    }
 
-    // 初回ログ（riskFlags は後から更新される）
-    await logInteraction({
-      userId,
-      interactionType: "risk_checker",
-      inputLength: rawInput.length,
-    });
+    // 回答を記録し、次のレイヤーへ
+    const newState: DiagnosisState = {
+      ...diagnosisState,
+      layer: diagnosisState.layer + 1,
+      answers: [...diagnosisState.answers, trimmed],
+    };
 
+    // 4問回答完了 → 結論を表示
+    if (newState.answers.length >= 4) {
+      const articleIds = getConclusion(newState);
+      const articles = articleIds ? getArticlesByIds(articleIds) : [];
+      
+      if (articles.length > 0) {
+        const conclusionMessage = buildConclusionMessage(newState, articles);
+        if (replyToken) {
+          await replyText(replyToken, conclusionMessage);
+        }
+      } else {
+        // 記事が見つからない場合のフォールバック
+        if (replyToken) {
+          await replyText(replyToken, [
+            `【${newState.keyword}】診断完了`,
+            "",
+            "ご回答ありがとうございました。",
+            "関連記事の準備中です。",
+            "",
+            "---",
+            "💬 詳しくは Discord でご相談ください",
+            DISCORD_INVITE_URL,
+          ].join("\n"));
+        }
+      }
+      
+      await clearDiagnosisState(lineUserId);
+      await logInteraction({
+        userId,
+        interactionType: "course_entry",
+        courseKeyword: newState.keyword,
+        inputLength: trimmed.length,
+      });
+      return;
+    }
+
+    // 次の質問を表示
+    await updateDiagnosisState(lineUserId, newState);
+    const nextQuestion = getNextQuestion(newState);
+    if (nextQuestion && replyToken) {
+      const { text: questionText, quickReply } = buildQuestionMessage(nextQuestion, newState.layer);
+      await replyText(replyToken, questionText, quickReply as QuickReply);
+    }
     return;
   }
 
-  // 3) 診断キーワード（6種類のいずれかと完全一致）
+  // ========================================
+  // 2) 診断キーワード → 4層フロー or 即時記事表示
+  // ========================================
   const courseKeyword = detectCourseKeyword(trimmed);
   if (courseKeyword) {
+    // 「病院AIリスク診断」のみ4層フロー
+    if (courseKeyword === "病院AIリスク診断") {
+      const flow = getFlowForKeyword(courseKeyword);
+      if (flow) {
+        const startMessage = buildDiagnosisStartMessage(courseKeyword);
+        if (startMessage && replyToken) {
+          // 診断状態を初期化
+          const initialState: DiagnosisState = {
+            keyword: courseKeyword,
+            layer: 1,
+            answers: [],
+          };
+          await updateDiagnosisState(lineUserId, initialState);
+          await replyText(replyToken, startMessage.text, startMessage.quickReply as QuickReply);
+        }
+        return;
+      }
+    }
+
+    // 他のキーワードは従来どおり即時記事表示
     const courseMessage = buildCourseEntryMessage(courseKeyword);
     if (replyToken) {
       await replyText(replyToken, courseMessage);
     }
-
-    await logInteraction({
-      userId,
-      interactionType: "course_entry",
-      courseKeyword,
-      inputLength: trimmed.length,
-    });
-
+    await logInteraction({ userId, interactionType: "course_entry", courseKeyword, inputLength: trimmed.length });
     return;
   }
 
-  // 4) 「コミュニティ」選択 → Discord 招待
+  // ========================================
+  // 3) 「コミュニティ」→ Discord
+  // ========================================
   if (trimmed === "コミュニティ") {
     if (replyToken) {
-      await replyText(
-        replyToken,
-        [
-          "🎉 Cursorvers コミュニティへようこそ！",
-          "",
-          "Discord で医療 × AI の最新情報や、",
-          "他のメンバーとの交流ができます。",
-          "",
-          "▼ 参加はこちら",
-          DISCORD_INVITE_URL,
-        ].join("\n")
-      );
+      await replyText(replyToken, [
+        "🎉 Cursorvers コミュニティへようこそ！",
+        "",
+        "Discord で医療 × AI の最新情報や、",
+        "他のメンバーとの交流ができます。",
+        "",
+        "▼ 参加はこちら",
+        DISCORD_INVITE_URL,
+      ].join("\n"));
     }
     return;
   }
 
-  // 5) それ以外 → ヘルプメッセージ + クイックリプライ
+  // ========================================
+  // 4) ヘルプメッセージ
+  // ========================================
   if (replyToken) {
     const helpMessage = [
       "Pocket Defense Tool",
       "",
       "■ プロンプト整形",
-      "雑なメモをAI用の構造化プロンプトに変換します。",
-      "",
-      "使い方：「磨いて:」の後に文章を入力",
-      "例）磨いて:患者の血圧が高いので降圧剤を検討したい",
+      "「磨いて:」の後に文章を入力",
       "",
       "■ リスクチェック",
-      "文章に含まれるリスク（広告規制・個人情報など）を判定します。",
+      "「check:」の後に文章を入力",
       "",
-      "使い方：「check:」の後に文章を入力",
-      "例）check:この治療法で必ず治ります",
-      "",
-      "■ AI導入についての情報収集",
-      "下のボタンから関心のあるテーマを選んでください ↓",
+      "■ AI導入情報",
+      "下のボタンから選んでください ↓",
     ].join("\n");
 
     await replyText(replyToken, helpMessage, buildDiagnosisQuickReply());
