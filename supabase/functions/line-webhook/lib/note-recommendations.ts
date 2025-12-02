@@ -175,11 +175,22 @@ export function getArticlesByIds(articleIds: string[]): NoteArticle[] {
  * @returns タグに一致する記事の配列
  */
 export function getArticlesByTag(tag: string, limit: number = 3): NoteArticle[] {
+  if (!tag || typeof tag !== "string" || tag.trim().length === 0) {
+    console.warn("[note-recommendations] Invalid tag provided:", tag);
+    return [];
+  }
+  
+  if (limit < 1) {
+    console.warn("[note-recommendations] Invalid limit:", limit);
+    return [];
+  }
+  
   const matchingArticles: NoteArticle[] = [];
   
   for (const course of COURSE_RECOMMENDATIONS) {
     for (const article of course.articles) {
-      if (article.tags?.includes(tag)) {
+      // タグが存在し、指定されたタグを含む場合
+      if (article.tags && article.tags.length > 0 && article.tags.includes(tag)) {
         matchingArticles.push(article);
       }
     }

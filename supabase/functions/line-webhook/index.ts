@@ -683,8 +683,12 @@ async function handleEvent(event: LineEvent): Promise<void> {
       // タグベースのフォールバック（記事IDが見つからない場合）
       if (articles.length === 0) {
         const interest = newState.answers[1]; // layer2の回答
-        articles = getArticlesByTag(interest, 3);
-        console.log(`[line-webhook] Using tag-based fallback for "${interest}", found ${articles.length} articles`);
+        if (interest) {
+          articles = getArticlesByTag(interest, 3);
+          console.log(`[line-webhook] Using tag-based fallback for "${interest}", found ${articles.length} articles`);
+        } else {
+          console.error(`[line-webhook] No interest found in answers:`, newState.answers);
+        }
       }
       
       if (articles.length > 0) {
