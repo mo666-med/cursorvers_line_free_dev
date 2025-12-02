@@ -140,3 +140,28 @@ export function getFirstArticle(keyword: string): NoteArticle | null {
   if (!course || course.articles.length === 0) return null;
   return course.articles[0];
 }
+
+/**
+ * 記事IDから記事オブジェクトを取得
+ */
+export function getArticleById(articleId: string): NoteArticle | null {
+  for (const course of COURSE_RECOMMENDATIONS) {
+    const article = course.articles.find((a) => a.id === articleId);
+    if (article) return article;
+  }
+  return null;
+}
+
+/**
+ * 記事ID配列から記事オブジェクト配列を取得
+ */
+export function getArticlesByIds(articleIds: string[]): NoteArticle[] {
+  const articles: NoteArticle[] = [];
+  for (const id of articleIds) {
+    const article = getArticleById(id);
+    if (article) {
+      articles.push(article);
+    }
+  }
+  return articles;
+}

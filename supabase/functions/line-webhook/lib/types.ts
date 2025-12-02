@@ -1,13 +1,8 @@
 // supabase/functions/line-webhook/lib/types.ts
 // Pocket Defense Tool 共通型定義
 
-export type DiagnosisKeyword =
-  | "病院AIリスク診断"
-  | "SaMDスタートアップ診断"
-  | "医療データガバナンス診断"
-  | "臨床知アセット診断"
-  | "教育AI導入診断"
-  | "次世代AI実装診断";
+// DiagnosisKeyword は constants.ts から再エクスポート
+export type { DiagnosisKeyword } from "./constants.ts";
 
 export type InteractionType = "prompt_polisher" | "risk_checker" | "course_entry";
 
