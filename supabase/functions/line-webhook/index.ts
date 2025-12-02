@@ -461,18 +461,22 @@ async function handleEvent(event: LineEvent): Promise<void> {
   // 4) それ以外 → ヘルプメッセージ + クイックリプライ
   if (replyToken) {
     const helpMessage = [
-      "Pocket Defense Tool へようこそ！",
+      "Pocket Defense Tool",
       "",
       "■ プロンプト整形",
-      "「磨いて:」に続けて文章を入力",
-      "例）磨いて:患者の血圧が高い",
+      "雑なメモをAI用の構造化プロンプトに変換します。",
+      "",
+      "使い方：「磨いて:」の後に文章を入力",
+      "例）磨いて:患者の血圧が高いので降圧剤を検討したい",
       "",
       "■ リスクチェック",
-      "「check:」に続けて文章を入力",
-      "例）check:この治療は効果抜群です",
+      "文章に含まれるリスク（広告規制・個人情報など）を判定します。",
       "",
-      "■ AI導入診断",
-      "下のボタンから選択してください ↓",
+      "使い方：「check:」の後に文章を入力",
+      "例）check:この治療法で必ず治ります",
+      "",
+      "■ AI導入についての情報収集",
+      "下のボタンから関心のあるテーマを選んでください ↓",
     ].join("\n");
 
     await replyText(replyToken, helpMessage, buildDiagnosisQuickReply());
