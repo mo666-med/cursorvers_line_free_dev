@@ -431,7 +431,10 @@ export function getNextQuestion(
   state: DiagnosisState
 ): DiagnosisQuestion | null {
   const flow = getFlowForKeyword(state.keyword);
-  if (!flow) return null;
+  if (!flow) {
+    console.error("[diagnosis-flow] Flow not found for keyword:", state.keyword);
+    return null;
+  }
 
   const { layer, answers } = state;
 
@@ -444,6 +447,7 @@ export function getNextQuestion(
       return flow.layer2 as DiagnosisQuestion;
     }
     // 分岐型の場合（現在の実装では使用していない）
+    console.error("[diagnosis-flow] layer2 is branching type but not implemented");
     return null;
   }
   if (layer === 3) {
@@ -453,7 +457,16 @@ export function getNextQuestion(
       return flow.layer3 as DiagnosisQuestion;
     }
     const layer3Questions = flow.layer3 as Record<string, DiagnosisQuestion>;
-    return layer3Questions[interest] ?? null;
+    const question = layer3Questions[interest];
+    if (!question) {
+      console.error("[diagnosis-flow] layer3 question not found for interest:", interest);
+      // フォールバック: 最初の選択肢を返す
+      const keys = Object.keys(layer3Questions);
+      if (keys.length > 0) {
+        return layer3Questions[keys[0]];
+      }
+    }
+    return question ?? null;
   }
 
   return null;
@@ -545,28 +558,37 @@ export function buildConclusionMessage(
   articles: Array<{ title: string; url: string | null }>
 ): string {
   // 回答のサマリーを作成（関心領域を強調）
-  const interest = state.answers[1]; // layer2の回答が主軸
+  const interest = state.answers[1] ?? "AI活用"; // layer2の回答が主軸
+  const detail = state.answers[2] ?? ""; // layer3の回答（具体的な課題）
   
   const lines: string[] = [
-    `🎯【${state.keyword}】診断完了！`,
+    `🎯【${state.keyword}】`,
+    "診断完了！",
     "",
-    `あなたの関心：「${interest}」`,
-    "",
-    "━━━━━━━━━━━━━━━━",
-    "📚 あなたにおすすめの記事",
-    "━━━━━━━━━━━━━━━━",
-    "",
+    `📌 あなたの関心`,
+    `「${interest}」`,
   ];
+  
+  // 詳細がある場合のみ表示
+  if (detail) {
+    lines.push(`└ ${detail}`);
+  }
+  
+  lines.push("");
+  lines.push("━━━━━━━━━━━━━━━━━━");
+  lines.push("📚 おすすめ記事");
+  lines.push("━━━━━━━━━━━━━━━━━━");
 
   articles.forEach((article, i) => {
-    lines.push(`▶ ${article.title}`);
-    if (article.url) {
-      lines.push(article.url);
-    }
     lines.push("");
+    lines.push(`${i + 1}. ${article.title}`);
+    if (article.url) {
+      lines.push(`   ${article.url}`);
+    }
   });
 
-  lines.push("---");
+  lines.push("");
+  lines.push("━━━━━━━━━━━━━━━━━━");
   lines.push("💬 もっと詳しく知りたい方は");
   lines.push("Discord コミュニティへ！");
   lines.push(DISCORD_INVITE_URL);
