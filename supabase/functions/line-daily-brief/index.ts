@@ -58,7 +58,8 @@ const getEnv = (name: (typeof REQUIRED_ENV_VARS)[number]): string => {
 const SUPABASE_URL = getEnv("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = getEnv("SUPABASE_SERVICE_ROLE_KEY");
 const LINE_CHANNEL_ACCESS_TOKEN = getEnv("LINE_CHANNEL_ACCESS_TOKEN");
-const CRON_SECRET = Deno.env.get("CRON_SECRET");
+// Support both CRON_SECRET and LINE_DAILY_BRIEF_CRON_SECRET for backward compatibility
+const CRON_SECRET = Deno.env.get("CRON_SECRET") || Deno.env.get("LINE_DAILY_BRIEF_CRON_SECRET");
 
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: {
