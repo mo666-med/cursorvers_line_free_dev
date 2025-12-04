@@ -111,9 +111,17 @@ function verifyAuth(req: Request): boolean {
   const authHeader = req.headers.get("Authorization");
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.substring(7);
-    if (token === SUPABASE_SERVICE_ROLE_KEY) return true;
+    const tokenMatches = token === SUPABASE_SERVICE_ROLE_KEY;
+    log("info", "Service role key check", {
+      hasAuthHeader: !!authHeader,
+      tokenLength: token.length,
+      serviceRoleKeyLength: SUPABASE_SERVICE_ROLE_KEY.length,
+      tokenMatches,
+    });
+    if (tokenMatches) return true;
   }
 
+  log("warn", "Authentication failed - no valid credentials");
   return false;
 }
 
