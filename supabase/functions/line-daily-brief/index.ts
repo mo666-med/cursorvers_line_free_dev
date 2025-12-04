@@ -59,8 +59,8 @@ const getEnv = (name: (typeof REQUIRED_ENV_VARS)[number]): string => {
 const SUPABASE_URL = getEnv("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = getEnv("SUPABASE_SERVICE_ROLE_KEY");
 const LINE_CHANNEL_ACCESS_TOKEN = getEnv("LINE_CHANNEL_ACCESS_TOKEN");
-// Use LINE_DAILY_BRIEF_CRON_SECRET only (ignore CRON_SECRET to avoid conflicts)
-const CRON_SECRET = Deno.env.get("LINE_DAILY_BRIEF_CRON_SECRET");
+// Use API key for authentication (same pattern as generate-sec-brief)
+const LINE_DAILY_BRIEF_API_KEY = Deno.env.get("LINE_DAILY_BRIEF_API_KEY");
 
 // Debug: Log secret availability (without exposing the actual value)
 if (!CRON_SECRET) {
@@ -97,31 +97,29 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  * Verify request authentication
  */
 function verifyAuth(req: Request): boolean {
-  const cronHeader = req.headers.get("X-CRON-SECRET");
-  log("info", "Auth check", {
-    hasCronSecret: !!CRON_SECRET,
-    cronSecretLength: CRON_SECRET?.length || 0,
-    hasCronHeader: !!cronHeader,
-    cronHeaderLength: cronHeader?.length || 0,
-    headersMatch: CRON_SECRET && cronHeader === CRON_SECRET,
-  });
+  // Method 1: X-API-Key header (same pattern as generate-sec-brief)
+  const apiKeyHeader = req.headers.get("X-API-Key");
+  if (LINE_DAILY_BRIEF_API_KEY && apiKeyHeader === LINE_DAILY_BRIEF_API_KEY) {
+    log("info", "Authentication successful via X-API-Key");
+    return true;
+  }
 
-  if (CRON_SECRET && cronHeader === CRON_SECRET) return true;
-
+  // Method 2: Authorization Bearer (service role key) - fallback
   const authHeader = req.headers.get("Authorization");
   if (authHeader?.startsWith("Bearer ")) {
     const token = authHeader.substring(7);
-    const tokenMatches = token === SUPABASE_SERVICE_ROLE_KEY;
-    log("info", "Service role key check", {
-      hasAuthHeader: !!authHeader,
-      tokenLength: token.length,
-      serviceRoleKeyLength: SUPABASE_SERVICE_ROLE_KEY.length,
-      tokenMatches,
-    });
-    if (tokenMatches) return true;
+    if (token === SUPABASE_SERVICE_ROLE_KEY) {
+      log("info", "Authentication successful via Bearer token");
+      return true;
+    }
   }
 
-  log("warn", "Authentication failed - no valid credentials");
+  log("warn", "Authentication failed", {
+    hasApiKey: !!LINE_DAILY_BRIEF_API_KEY,
+    hasApiKeyHeader: !!apiKeyHeader,
+    apiKeyMatches: LINE_DAILY_BRIEF_API_KEY && apiKeyHeader === LINE_DAILY_BRIEF_API_KEY,
+    hasAuthHeader: !!authHeader,
+  });
   return false;
 }
 
