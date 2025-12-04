@@ -19,14 +19,14 @@ jobs:
       - name: Trigger line-daily-brief Edge Function
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          LINE_DAILY_BRIEF_API_KEY: ${{ secrets.LINE_DAILY_BRIEF_API_KEY }}
         run: |
           echo "📤 LINE Daily Brief を配信中..."
           
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             "${SUPABASE_URL}/functions/v1/line-daily-brief" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}")
+            -H "X-API-Key: ${LINE_DAILY_BRIEF_API_KEY}")
           
           HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
           BODY=$(echo "$RESPONSE" | sed '$d')
