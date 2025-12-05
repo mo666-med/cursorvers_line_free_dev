@@ -55,7 +55,6 @@ const columns = [
   "stripe_customer_id",
   "stripe_subscription_id",
   "subscription_status",
-  "created_at",
 ];
 
 async function fetchMembers(filter) {
@@ -98,7 +97,6 @@ const toRows = (data) =>
     row.stripe_customer_id ?? "",
     row.stripe_subscription_id ?? "",
     row.subscription_status ?? "",
-    row.created_at ?? "",
   ]);
 
 async function clearAndWrite(sheets, targetSheet, rows) {
@@ -121,7 +119,6 @@ async function clearAndWrite(sheets, targetSheet, rows) {
       "Stripe Customer ID",
       "Stripe Subscription ID",
       "Subscription Status",
-      "Created At",
     ],
     ...rows,
   ];
