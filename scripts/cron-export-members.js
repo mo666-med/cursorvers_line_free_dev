@@ -52,6 +52,10 @@ const columns = [
   "opt_in_email",
   "updated_at",
   "line_user_id",
+  "stripe_customer_id",
+  "stripe_subscription_id",
+  "subscription_status",
+  "created_at",
 ];
 
 async function fetchMembers(filter) {
@@ -91,6 +95,10 @@ const toRows = (data) =>
     row.opt_in_email ?? "",
     row.updated_at ?? "",
     row.line_user_id ?? "",
+    row.stripe_customer_id ?? "",
+    row.stripe_subscription_id ?? "",
+    row.subscription_status ?? "",
+    row.created_at ?? "",
   ]);
 
 async function clearAndWrite(sheets, targetSheet, rows) {
@@ -110,6 +118,10 @@ async function clearAndWrite(sheets, targetSheet, rows) {
       "Opt In Email",
       "Updated At",
       "Line User ID",
+      "Stripe Customer ID",
+      "Stripe Subscription ID",
+      "Subscription Status",
+      "Created At",
     ],
     ...rows,
   ];
