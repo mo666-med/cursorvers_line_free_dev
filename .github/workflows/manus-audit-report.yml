@@ -1,0 +1,41 @@
+name: Manus Audit (Report)
+
+on:
+  schedule:
+    - cron: '0 21 * * *'   # UTC21:00 = JST06:00
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run report
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          MANUS_AUDIT_API_KEY: ${{ secrets.MANUS_AUDIT_API_KEY }}
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "${SUPABASE_URL}/functions/v1/manus-audit-line-daily-brief?mode=report" \
+            -H "Content-Type: application/json" \
+            -H "X-API-Key: ${MANUS_AUDIT_API_KEY}")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          echo "Response: $BODY"
+          echo "HTTP Code: $HTTP_CODE"
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "❌ レポート実行失敗 (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_ADMIN_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d '{"content": "🚨 **Manusレポート実行が失敗しました**\nhttps://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}'
+          fi
+          
