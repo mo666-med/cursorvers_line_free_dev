@@ -283,6 +283,7 @@
   <script>
     const LIFF_FALLBACK_ID = "2008640048-jnoneGgO";
     const API_ENDPOINT = "https://haaxgwyimoqzzxzdaeep.functions.supabase.co/line-register";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhhYXhnd3lpbW9xenp4emRhZWVwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg0MzMyMzUsImV4cCI6MjA3NDAwOTIzNX0.U3Q0wwFbQlZ2tjK8E0upFbK25VpKoVF_OqQTBf6lWVQ";
     
     const statusEl = document.getElementById("status");
     const emailOptIn = document.getElementById("email-opt-in");
@@ -351,7 +352,10 @@
             // メールアドレスをAPIに送信
             const response = await fetch(API_ENDPOINT, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+              },
               body: JSON.stringify({
                 email: email,
                 opt_in_email: optIn
@@ -463,7 +467,10 @@
 
         const response = await fetch(API_ENDPOINT, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+          },
           body: JSON.stringify(payload)
         });
 
