@@ -103,9 +103,9 @@ async function handleJoin(
 
     // メールアドレスで検索
     const { data: member, error } = await supabase
-      .from("library_members")
+      .from("members")
       .select("*")
-      .eq("stripe_customer_email", email)
+      .eq("email", email)
       .eq("status", "active")
       .single();
 
@@ -142,7 +142,7 @@ async function handleJoin(
 
     // DB更新 (Discord IDを紐付け)
     await supabase
-      .from("library_members")
+      .from("members")
       .update({ discord_user_id: userId })
       .eq("id", member.id);
 
