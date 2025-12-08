@@ -1,3 +1,2 @@
-[functions.line-register]
+[function]
 verify_jwt = false
-
