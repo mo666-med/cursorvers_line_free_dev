@@ -173,8 +173,12 @@
         lineUserId = profile.userId;
         userEl.textContent = `LINE ID: ${lineUserId}`;
 
+        // Get id_token for LINE login verification
+        const idToken = liff.getIDToken();
+        
         const payload = { line_user_id: lineUserId, opt_in_email: savedOptIn };
         if (savedEmail) payload.email = savedEmail;
+        if (idToken) payload.id_token = idToken;
 
         const res = await fetch(API_ENDPOINT, {
           method: "POST",
