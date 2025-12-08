@@ -9,6 +9,14 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// 日本時間（JST, UTC+9）を返すヘルパー関数
+function getJSTTimestamp(): string {
+  const now = new Date();
+  const jstOffset = 9 * 60; // JST is UTC+9
+  const jstTime = new Date(now.getTime() + jstOffset * 60 * 1000);
+  return jstTime.toISOString().replace('Z', '+09:00');
+}
+
 // 統一的なログ関数
 type LogLevel = "info" | "warn" | "error";
 
@@ -17,7 +25,7 @@ function log(level: LogLevel, message: string, context: Record<string, unknown> 
     level,
     message,
     ...context,
-    timestamp: new Date().toISOString(),
+    timestamp: getJSTTimestamp(),
     function: "line-register",
   };
   const output = JSON.stringify(entry);
@@ -282,7 +290,7 @@ serve(async (req) => {
     tier: existingRecord?.tier ?? "free",
     status: "active",
     opt_in_email: optInEmail,
-    updated_at: new Date().toISOString(),
+    updated_at: getJSTTimestamp(),
   };
 
   if (email) payload.email = email;
@@ -298,7 +306,7 @@ serve(async (req) => {
           .from("members")
           .update({
             line_user_id: lineUserId,
-            updated_at: new Date().toISOString(),
+            updated_at: getJSTTimestamp(),
           })
           .eq("id", existingRecord.id);
         if (updatePaid) {
@@ -390,7 +398,7 @@ serve(async (req) => {
     (payload.status as string) ?? "",
     "", // period_end（未管理）
     optInEmail,
-    (payload.updated_at as string) ?? new Date().toISOString(),
+    (payload.updated_at as string) ?? getJSTTimestamp(),
     lineUserId ?? "",
     "", // stripe_customer_id（未設定）
     "", // stripe_subscription_id（未設定）
