@@ -466,17 +466,11 @@ async function handlePostArticle(
       }
 
       // 4. Discord Embedメッセージを作成
-      const embed = {
+      const embed: any = {
         title: metadata.title || "タイトル不明",
-        description: summary,
+        description: summary.substring(0, 4096), // Embedのdescriptionは4096文字まで
         url: url,
         color: 0x5865F2, // Discord Blurple
-        fields: [
-          {
-            name: "📝 要約",
-            value: summary.substring(0, 1024), // Embedのfield valueは1024文字まで
-          },
-        ],
         footer: {
           text: `投稿者: ${userId}`,
         },
@@ -484,7 +478,7 @@ async function handlePostArticle(
       };
 
       if (metadata.image) {
-        embed.thumbnail = { url: metadata.image };
+        embed.image = { url: metadata.image };
       }
 
       // 5. Discordチャンネルに投稿
