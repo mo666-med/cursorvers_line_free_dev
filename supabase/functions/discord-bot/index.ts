@@ -59,9 +59,12 @@ serve(async (req) => {
 
   // 2. Ping応答 (Discordとの接続確認用)
   if (interaction.type === 1) {
-    return new Response(JSON.stringify({ type: 1 }), {
+    console.log("Returning PING response");
+    const response = new Response(JSON.stringify({ type: 1 }), {
       headers: { "Content-Type": "application/json" },
     });
+    console.log("Response status:", response.status);
+    return response;
   }
 
   // 3. コマンドルーティング
