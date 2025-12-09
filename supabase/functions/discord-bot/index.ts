@@ -9,7 +9,7 @@ import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-
 import nacl from "https://esm.sh/tweetnacl@1.0.3";
 
 // 環境変数（起動時に検証）
-const DISCORD_PUBLIC_KEY = Deno.env.get("DISCORD_PUBLIC_KEY") ?? "";
+const DISCORD_PUBLIC_KEY = "741f9a907cd23cbe07422ee483463e93440ffc74419aa46fe60824eb817de4cf";
 const DISCORD_BOT_TOKEN = Deno.env.get("DISCORD_BOT_TOKEN") ?? "";
 const DISCORD_ROLE_ID = Deno.env.get("DISCORD_ROLE_ID") ?? "";
 const SEC_BRIEF_CHANNEL_ID = Deno.env.get("SEC_BRIEF_CHANNEL_ID") ?? "";
@@ -30,6 +30,11 @@ interface DiscordInteraction {
 }
 
 serve(async (req) => {
+  // GETリクエストに対応（ヘルスチェック用）
+  if (req.method === "GET") {
+    return new Response("Discord Bot is running", { status: 200 });
+  }
+
   // 0. 環境変数の検証
   console.log("DISCORD_PUBLIC_KEY length:", DISCORD_PUBLIC_KEY.length);
   console.log("DISCORD_PUBLIC_KEY:", DISCORD_PUBLIC_KEY);
@@ -50,10 +55,12 @@ serve(async (req) => {
   const isValid = verifySignature(signature, timestamp, body);
   console.log("Signature valid:", isValid);
   
+  // 署名検証を有効化
   if (!signature || !timestamp || !isValid) {
     console.error("Signature verification failed");
     return new Response("Invalid signature", { status: 401 });
   }
+  console.log("✅ Signature verification passed");
 
   const interaction: DiscordInteraction = JSON.parse(body);
 
@@ -84,6 +91,8 @@ serve(async (req) => {
         return handleSecBriefLatest(supabase);
       case "sec-brief-publish":
         return handleSecBriefPublish(interaction, supabase);
+      case "post-article":
+        return handlePostArticle(interaction, supabase);
       default:
         return new Response("Unknown command", { status: 400 });
     }
@@ -396,4 +405,237 @@ function splitMessage(text: string, maxLength: number): string[] {
   }
 
   return chunks;
+}
+
+// ============================================
+// /post-article コマンドハンドラ
+// 記事URLを解析してトレンド情報共有チャンネルに投稿
+// ============================================
+async function handlePostArticle(
+  interaction: DiscordInteraction,
+  supabase: SupabaseClient
+): Promise<Response> {
+  const url = interaction.data?.options?.find((o) => o.name === "url")?.value;
+  const userId = interaction.member?.user.id;
+
+  if (!url) {
+    return jsonResponse({
+      type: 4,
+      data: {
+        content: "⛔ **エラー**: URLを入力してください。\n使い方: `/post-article url:https://example.com/article`",
+        flags: 64,
+      },
+    });
+  }
+
+  // URLの形式を簡易チェック
+  try {
+    new URL(url);
+  } catch {
+    return jsonResponse({
+      type: 4,
+      data: {
+        content: "⛔ **エラー**: 有効なURLを入力してください。",
+        flags: 64,
+      },
+    });
+  }
+
+  // 即座に「処理中」メッセージを返す
+  const processingResponse = jsonResponse({
+    type: 4,
+    data: {
+      content: "⏳ 記事を解析中です...",
+      flags: 64, // ephemeral
+    },
+  });
+
+  // バックグラウンドで記事を解析・投稿
+  (async () => {
+    try {
+      // 1. 記事のメタデータを取得
+      const metadata = await fetchArticleMetadata(url);
+
+      // 2. Gemini APIで記事を要約
+      const summary = await summarizeArticle(url, metadata);
+
+      // 3. トレンド情報共有チャンネルIDを取得
+      const TREND_CHANNEL_ID = Deno.env.get("TREND_CHANNEL_ID") ?? "";
+      if (!TREND_CHANNEL_ID) {
+        throw new Error("TREND_CHANNEL_ID is not configured");
+      }
+
+      // 4. Discord Embedメッセージを作成
+      const embed = {
+        title: metadata.title || "タイトル不明",
+        description: summary,
+        url: url,
+        color: 0x5865F2, // Discord Blurple
+        fields: [
+          {
+            name: "📝 要約",
+            value: summary.substring(0, 1024), // Embedのfield valueは1024文字まで
+          },
+        ],
+        footer: {
+          text: `投稿者: ${userId}`,
+        },
+        timestamp: new Date().toISOString(),
+      };
+
+      if (metadata.image) {
+        embed.thumbnail = { url: metadata.image };
+      }
+
+      // 5. Discordチャンネルに投稿
+      const postRes = await fetch(
+        `https://discord.com/api/v10/channels/${TREND_CHANNEL_ID}/messages`,
+        {
+          method: "POST",
+          headers: {
+            "Authorization": `Bot ${DISCORD_BOT_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            embeds: [embed],
+          }),
+        }
+      );
+
+      if (!postRes.ok) {
+        const errorText = await postRes.text();
+        console.error(`Discord post failed: ${errorText}`);
+        throw new Error(`Discord API error: ${postRes.status}`);
+      }
+
+      const postedMessage = await postRes.json();
+
+      // 6. Supabaseに投稿履歴を保存
+      await supabase.from("article_posts").insert({
+        article_url: url,
+        article_title: metadata.title,
+        article_description: metadata.description,
+        article_image_url: metadata.image,
+        summary: summary,
+        discord_message_id: postedMessage.id,
+        discord_channel_id: TREND_CHANNEL_ID,
+        posted_by: userId,
+        status: "posted",
+      });
+
+      console.log(`✅ Article posted successfully: ${url}`);
+    } catch (error) {
+      console.error(`❌ Failed to post article: ${error.message}`);
+
+      // エラーをSupabaseに記録
+      await supabase.from("article_posts").insert({
+        article_url: url,
+        posted_by: userId,
+        discord_channel_id: Deno.env.get("TREND_CHANNEL_ID") ?? "",
+        status: "failed",
+        error_message: error.message,
+      });
+    }
+  })();
+
+  return processingResponse;
+}
+
+// ============================================
+// 記事のメタデータを取得
+// ============================================
+async function fetchArticleMetadata(url: string): Promise<{
+  title?: string;
+  description?: string;
+  image?: string;
+}> {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; CursorversBot/1.0)",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const html = await response.text();
+
+    // OGPタグからメタデータを抽出
+    const titleMatch = html.match(/<meta property="og:title" content="([^"]+)"/);
+    const descMatch = html.match(/<meta property="og:description" content="([^"]+)"/);
+    const imageMatch = html.match(/<meta property="og:image" content="([^"]+)"/);
+
+    // OGPがない場合は通常のtitleタグから取得
+    const fallbackTitleMatch = html.match(/<title>([^<]+)<\/title>/);
+
+    return {
+      title: titleMatch?.[1] || fallbackTitleMatch?.[1],
+      description: descMatch?.[1],
+      image: imageMatch?.[1],
+    };
+  } catch (error) {
+    console.error(`Failed to fetch metadata: ${error.message}`);
+    return {};
+  }
+}
+
+// ============================================
+// Gemini APIで記事を要約
+// ============================================
+async function summarizeArticle(url: string, metadata: any): Promise<string> {
+  const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+
+  if (!GEMINI_API_KEY) {
+    // Gemini APIが設定されていない場合は、メタデータのdescriptionを返す
+    return metadata.description || "要約を生成できませんでした。";
+  }
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: `以下の記事を3〜5文で要約してください。要約は日本語で、重要なポイントを簡潔にまとめてください。
+
+記事URL: ${url}
+タイトル: ${metadata.title || "不明"}
+説明: ${metadata.description || "なし"}`,
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 500,
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Gemini API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const summary = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!summary) {
+      throw new Error("No summary generated");
+    }
+
+    return summary.trim();
+  } catch (error) {
+    console.error(`Failed to generate summary: ${error.message}`);
+    return metadata.description || "要約を生成できませんでした。";
+  }
 }
