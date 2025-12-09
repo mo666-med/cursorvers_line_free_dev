@@ -581,36 +581,20 @@ async function fetchArticleMetadata(url: string): Promise<{
 }
 
 // ============================================
-// Gemini APIで記事を要約
+// OpenAI APIで記事を要約
 // ============================================
 async function summarizeArticle(url: string, metadata: any): Promise<string> {
-  const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+  const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+  const OPENAI_API_BASE = Deno.env.get("OPENAI_API_BASE") || "https://api.openai.com/v1";
 
-  if (!GEMINI_API_KEY) {
-    // Gemini APIが設定されていない場合は、メタデータのdescriptionを返す
+  if (!OPENAI_API_KEY) {
+    // OpenAI APIが設定されていない場合は、メタデータのdescriptionを返す
     return metadata.description || "要約を生成できませんでした。";
   }
 
   try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: `あなたは医療AI・医療情報の専門家であり、病院経営とDXに精通したオピニオンリーダーです。
-以下の記事を分析し、医療従事者向けに「Owner's View」として解説してください。
-
-記事情報:
-タイトル: ${metadata.title || "不明"}
-説明: ${metadata.description || "なし"}
-URL: ${url}
+    const systemPrompt = `あなたは医療AI・医療情報の専門家であり、病院経営とDXに精通したオピニオンリーダーです。
+記事を分析し、医療従事者向けに「Owner's View」として解説してください。
 
 以下の形式で出力してください:
 
@@ -626,25 +610,77 @@ URL: ${url}
 
 Discussion:
 [読者への問いかけ（2-3文）]
-現場の実態や具体的な取り組みについて、スレッドで共有を促す問いかけを作成してください。`,
-                },
-              ],
-            },
+現場の実態や具体的な取り組みについて、スレッドで共有を促す問いかけを作成してください。`;
+
+    const userPrompt = `記事情報:
+タイトル: ${metadata.title || "不明"}
+説明: ${metadata.description || "なし"}
+URL: ${url}`;
+
+    const response = await fetch(
+      `${OPENAI_API_BASE}/chat/completions`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "gpt-5.1-mini", // GPT-5.1-miniを優先、利用不可ならgpt-4oにフォールバック
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
           ],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 2048,
-          },
+          temperature: 0.7,
+          max_tokens: 2048,
         }),
       }
     );
 
     if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.status}`);
+      const errorData = await response.json();
+      // GPT-5.1-miniが利用不可な場合、gpt-4oにフォールバック
+      if (errorData.error?.code === "model_not_found" || errorData.error?.message?.includes("model")) {
+        console.log("GPT-5.1-mini not available, falling back to gpt-4o");
+        const fallbackResponse = await fetch(
+          `${OPENAI_API_BASE}/chat/completions`,
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${OPENAI_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "gpt-4o",
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt },
+              ],
+              temperature: 0.7,
+              max_tokens: 2048,
+            }),
+          }
+        );
+        
+        if (!fallbackResponse.ok) {
+          throw new Error(`OpenAI API error: ${fallbackResponse.status}`);
+        }
+        
+        const fallbackData = await fallbackResponse.json();
+        const summary = fallbackData.choices?.[0]?.message?.content;
+        
+        if (!summary) {
+          throw new Error("No summary generated");
+        }
+        
+        return summary.trim();
+      }
+      
+      throw new Error(`OpenAI API error: ${response.status}`);
     }
 
     const data = await response.json();
-    const summary = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const summary = data.choices?.[0]?.message?.content;
 
     if (!summary) {
       throw new Error("No summary generated");
