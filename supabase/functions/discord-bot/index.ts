@@ -466,10 +466,10 @@ async function handlePostArticle(
       }
 
       // 4. Discord Embedメッセージを作成
+      // Owner's Viewフォーマットで投稿
+      const messageContent = `:newspaper: **【Pick Up】今週の注目記事**\nArticle: ${metadata.title || "タイトル不明"}\n記事のURL: ${url}\n\n:man_health_worker: **Owner's View:**\n${summary}\n\n:speech_balloon: **Discussion:**\n感想や具体的な問いかけがあれば、スレッドで教えてください👇`;
+      
       const embed: any = {
-        title: metadata.title || "タイトル不明",
-        description: summary.substring(0, 4096), // Embedのdescriptionは4096文字まで
-        url: url,
         color: 0x5865F2, // Discord Blurple
         footer: {
           text: `投稿者: ${userId}`,
@@ -491,6 +491,7 @@ async function handlePostArticle(
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
+            content: messageContent,
             embeds: [embed],
           }),
         }
@@ -603,18 +604,36 @@ async function summarizeArticle(url: string, metadata: any): Promise<string> {
             {
               parts: [
                 {
-                  text: `以下の記事を3〜5文で要約してください。要約は日本語で、重要なポイントを簡潔にまとめてください。
+                  text: `あなたは医療AI・医療情報の専門家であり、病院経営とDXに精通したオピニオンリーダーです。
+以下の記事を分析し、医療従事者向けに「Owner's View」として解説してください。
 
-記事URL: ${url}
+記事情報:
 タイトル: ${metadata.title || "不明"}
-説明: ${metadata.description || "なし"}`,
+説明: ${metadata.description || "なし"}
+URL: ${url}
+
+以下の形式で出力してください:
+
+要点: [一言要約（20-30文字程度）]
+
+臨床への影響:
+[3-4段落の詳細な解説]
+- 記事の内容が医療現場（臨床、医療情報部、病院経営）にどのような影響を与えるか
+- 具体的な活用シーンや課題解決の可能性
+- DPC、電子カルテ、AI導入、働き方改革などの文脈での意義
+
+推奨: [対象読者をカンマ区切りで列挙（例: 医療情報部、DX推進担当、病院経営層、若手医師）]
+
+Discussion:
+[読者への問いかけ（2-3文）]
+現場の実態や具体的な取り組みについて、スレッドで共有を促す問いかけを作成してください。`,
                 },
               ],
             },
           ],
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 500,
+            maxOutputTokens: 2048,
           },
         }),
       }

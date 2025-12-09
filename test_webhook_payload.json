@@ -1,0 +1,32 @@
+{
+  "id": "evt_1Sc4a9HHe8GabhVIr1wU4KGD",
+  "object": "event",
+  "api_version": "2025-11-17.clover",
+  "created": 1765200761,
+  "data": {
+    "object": {
+      "id": "cs_live_a1Cjfqjx5jzeNyqYkPx7sKpTbYHTmUQFQbJURdavZkED4j0c6oACPkJKni",
+      "object": "checkout.session",
+      "amount_subtotal": 2980,
+      "amount_total": 2980,
+      "currency": "jpy",
+      "customer": "cus_TZCzVM1WKDbrkj",
+      "customer_details": {
+        "email": "masa_stage1@yahoo.co.jp",
+        "name": "大田原 正幸"
+      },
+      "customer_email": "masa_stage1@yahoo.co.jp",
+      "metadata": {
+        "email": "masa_stage1@yahoo.co.jp",
+        "opt_in_email": "true",
+        "source": "cursorvers_library"
+      },
+      "mode": "subscription",
+      "payment_status": "paid",
+      "status": "complete",
+      "subscription": "sub_1Sc4ZzHHe8GabhVIDRsKyCfQ"
+    }
+  },
+  "livemode": true,
+  "type": "checkout.session.completed"
+}

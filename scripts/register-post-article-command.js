@@ -2,7 +2,7 @@
 // Usage: node scripts/register-post-article-command.js
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
-const APPLICATION_ID = "1323569807395143711"; // Cursorvers Bot#7947
+const APPLICATION_ID = "1447704583374639165"; // Cursorvers Bot
 
 if (!DISCORD_BOT_TOKEN) {
   console.error("❌ DISCORD_BOT_TOKEN is not set");
