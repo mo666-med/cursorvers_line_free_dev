@@ -110,6 +110,70 @@ function uint8ToBase64(buffer: ArrayBuffer) {
   return btoa(binary);
 }
 
+// Discord招待リンクを送信
+async function sendDiscordInvite(email: string, name: string | null, tier: string) {
+  const discordBotToken = Deno.env.get("DISCORD_BOT_TOKEN");
+  const discordRoleId = Deno.env.get("DISCORD_ROLE_ID");
+  const guildId = Deno.env.get("DISCORD_GUILD_ID") || "1316621823382728704"; // Cursorvers Discord Server ID
+
+  if (!discordBotToken) {
+    console.warn("DISCORD_BOT_TOKEN not set, skipping Discord invite");
+    return;
+  }
+
+  try {
+    // Discord招待リンクを生成（有効期限2週間、使用回数1回）
+    const inviteResponse = await fetch(
+      `https://discord.com/api/v10/guilds/${guildId}/invites`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bot ${discordBotToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          max_age: 1209600, // 2週間（14日）
+          max_uses: 1, // 1回のみ使用可能
+          unique: true,
+        }),
+      }
+    );
+
+    if (!inviteResponse.ok) {
+      const errorText = await inviteResponse.text();
+      console.error(`Failed to create Discord invite: ${inviteResponse.status} ${errorText}`);
+      await notifyDiscord({
+        title: "MANUS ALERT: Discord invite creation failed",
+        message: `Status: ${inviteResponse.status}, Error: ${errorText}`,
+        context: { email, tier },
+      });
+      return;
+    }
+
+    const invite = await inviteResponse.json();
+    const inviteUrl = `https://discord.gg/${invite.code}`;
+
+    console.log(`Discord invite created: ${inviteUrl} for ${email}`);
+
+    // 招待リンクをメールで送信（実装例）
+    // TODO: メール送信機能を実装
+    console.log(`TODO: Send email to ${email} with invite link: ${inviteUrl}`);
+
+    // Discordに通知（管理者用）
+    await notifyDiscord({
+      title: "🎉 New Member Joined!",
+      message: `**Email**: ${email}\n**Name**: ${name || "N/A"}\n**Tier**: ${tier}\n**Invite**: ${inviteUrl}`,
+    });
+  } catch (err) {
+    console.error(`Failed to send Discord invite: ${err.message}`);
+    await notifyDiscord({
+      title: "MANUS ALERT: Discord invite error",
+      message: err.message,
+      context: { email, tier },
+    });
+  }
+}
+
 serve(async (req) => {
   const signature = req.headers.get("Stripe-Signature");
   const body = await req.text();
@@ -160,6 +224,9 @@ serve(async (req) => {
           (session.metadata?.opt_in_email ?? "").toString().toLowerCase() ===
           "true";
 
+        // 顧客名を取得
+        const customerName = session.customer_details?.name || null;
+
         // サブスクリプション型の場合、詳細情報を取得
         if (subscriptionId && typeof subscriptionId === "string") {
           try {
@@ -194,10 +261,11 @@ serve(async (req) => {
           .upsert(
             {
               email: customerEmail,
+              name: customerName,
               stripe_customer_id: session.customer as string | null,
               stripe_subscription_id: stripeSubscriptionId,
               status: "active",
-              subscription_status: subscriptionStatus,
+              stripe_subscription_status: subscriptionStatus,
               tier: membershipTier,
               period_end: nextBillingAt,
               opt_in_email: optInEmail,
@@ -223,6 +291,7 @@ serve(async (req) => {
           // Google Sheets へ追記（設定されている場合のみ）
           await appendMemberRow([
             customerEmail ?? "",
+            customerName ?? "",
             membershipTier ?? "",
             "active",
             nextBillingAt ?? "",
@@ -230,6 +299,9 @@ serve(async (req) => {
             "", // line_user_id（Stripe決済時は未設定）
             new Date().toISOString(),
           ]);
+
+          // Discord招待リンクを送信
+          await sendDiscordInvite(customerEmail, customerName, membershipTier);
         }
       } else {
         console.log(`Payment not completed: email=${customerEmail}, status=${paymentStatus}`);
@@ -257,7 +329,7 @@ serve(async (req) => {
         const { error } = await supabase
           .from("members")
           .update({
-            subscription_status: subscription.status,
+            stripe_subscription_status: subscription.status,
             status: subscription.status === "canceled" ? "inactive" : "active",
             period_end: subscription.current_period_end
               ? new Date(subscription.current_period_end * 1000).toISOString()
@@ -293,7 +365,7 @@ serve(async (req) => {
         const { error } = await supabase
           .from("members")
           .update({
-            subscription_status: "canceled",
+            stripe_subscription_status: "canceled",
             status: "inactive",
             updated_at: new Date().toISOString(),
           })

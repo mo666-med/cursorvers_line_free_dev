@@ -14,6 +14,12 @@ const DISCORD_BOT_TOKEN = Deno.env.get("DISCORD_BOT_TOKEN") ?? "";
 const DISCORD_ROLE_ID = Deno.env.get("DISCORD_ROLE_ID") ?? "";
 const SEC_BRIEF_CHANNEL_ID = Deno.env.get("SEC_BRIEF_CHANNEL_ID") ?? "";
 
+// グローバルSupabaseクライアント（パフォーマンス改善）
+const supabase = createClient(
+  Deno.env.get("SUPABASE_URL") ?? "",
+  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+);
+
 // Discord Interaction型定義
 interface DiscordInteraction {
   type: number;
@@ -30,25 +36,23 @@ interface DiscordInteraction {
 }
 
 serve(async (req) => {
-  // 0. 環境変数の検証
-  console.log("DISCORD_PUBLIC_KEY length:", DISCORD_PUBLIC_KEY.length);
-  console.log("DISCORD_PUBLIC_KEY:", DISCORD_PUBLIC_KEY);
+  // GETリクエストに対応（ヘルスチェック用）
+  if (req.method === "GET") {
+    return new Response("Discord Bot is running", { status: 200 });
+  }
+
+  // 環境変数の検証
   if (!DISCORD_PUBLIC_KEY || !DISCORD_BOT_TOKEN) {
     console.error("Missing required environment variables");
     return new Response("Server configuration error", { status: 500 });
   }
 
-  // 1. Discordからの署名を検証 (必須)
+  // Discordからの署名を検証
   const signature = req.headers.get("X-Signature-Ed25519");
   const timestamp = req.headers.get("X-Signature-Timestamp");
   const body = await req.text();
-
-  console.log("Signature:", signature);
-  console.log("Timestamp:", timestamp);
-  console.log("Body:", body);
   
   const isValid = verifySignature(signature, timestamp, body);
-  console.log("Signature valid:", isValid);
   
   if (!signature || !timestamp || !isValid) {
     console.error("Signature verification failed");
@@ -57,33 +61,22 @@ serve(async (req) => {
 
   const interaction: DiscordInteraction = JSON.parse(body);
 
-  // 2. Ping応答 (Discordとの接続確認用)
+  // Ping応答
   if (interaction.type === 1) {
-    console.log("Returning PING response");
-    const response = new Response(JSON.stringify({ type: 1 }), {
-      headers: { "Content-Type": "application/json" },
-    });
-    console.log("Response status:", response.status);
-    return response;
+    return jsonResponse({ type: 1 });
   }
 
-  // 3. コマンドルーティング
+  // コマンドルーティング
   if (interaction.type === 2) {
     const commandName = interaction.data?.name;
 
-    // Supabaseクライアント初期化
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
-
     switch (commandName) {
       case "join":
-        return handleJoin(interaction, supabase);
+        return handleJoin(interaction);
       case "sec-brief-latest":
-        return handleSecBriefLatest(supabase);
+        return handleSecBriefLatest();
       case "sec-brief-publish":
-        return handleSecBriefPublish(interaction, supabase);
+        return handleSecBriefPublish(interaction);
       default:
         return new Response("Unknown command", { status: 400 });
     }
@@ -96,8 +89,7 @@ serve(async (req) => {
 // /join コマンドハンドラ
 // ============================================
 async function handleJoin(
-  interaction: DiscordInteraction,
-  supabase: SupabaseClient
+  interaction: DiscordInteraction
 ): Promise<Response> {
   const email = interaction.data?.options?.find((o) => o.name === "email")?.value;
   const userId = interaction.member?.user.id;
@@ -114,65 +106,119 @@ async function handleJoin(
     });
   }
 
-    // メールアドレスで検索
-    const { data: member, error } = await supabase
-      .from("members")
-      .select("*")
-      .eq("email", email)
-      .eq("status", "active")
-      .single();
+  // メールアドレスの正規化
+  const normalizedEmail = email.trim().toLowerCase();
 
-    if (error || !member) {
-      return jsonResponse({
-        type: 4,
-        data: { 
-          content: `⛔ **エラー**: そのメールアドレス (${email}) の決済情報が見つかりません。\nStripeで決済したメールアドレスを正確に入力してください。`,
+  // メールアドレスの検証
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(normalizedEmail)) {
+    return jsonResponse({
+      type: 4,
+      data: {
+        content: "⛔ **エラー**: 無効なメールアドレス形式です。",
         flags: 64,
       },
-      });
-    }
+    });
+  }
 
-    // ロール付与 (Discord API)
+  // メールアドレスで検索（trialingを許可）
+  const { data: member, error } = await supabase
+    .from("members")
+    .select("*")
+    .eq("email", normalizedEmail)
+    .in("stripe_subscription_status", ["active", "trialing"])
+    .single();
+
+  if (error || !member) {
+    return jsonResponse({
+      type: 4,
+      data: { 
+        content: `⛔ **エラー**: そのメールアドレス (${normalizedEmail}) の有効なサブスクリプションが見つかりません。\n\n以下を確認してください：\n• Stripeで決済したメールアドレスを正確に入力\n• サブスクリプションが有効（active または trialing）`,
+        flags: 64,
+      },
+    });
+  }
+
+  // 既に別のユーザーが登録済みかチェック
+  if (member.discord_user_id && member.discord_user_id !== userId) {
+    return jsonResponse({
+      type: 4,
+      data: {
+        content: "⛔ **エラー**: このメールアドレスは既に別のDiscordアカウントに紐付けられています。",
+        flags: 64,
+      },
+    });
+  }
+
+  // ロール付与（タイムアウト設定）
+  try {
     const roleRes = await fetch(
       `https://discord.com/api/v10/guilds/${guildId}/members/${userId}/roles/${DISCORD_ROLE_ID}`,
       {
         method: "PUT",
         headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}` },
+        signal: AbortSignal.timeout(2000), // 2秒タイムアウト
       }
     );
+
+    // レート制限対応
+    if (roleRes.status === 429) {
+      const retryAfter = roleRes.headers.get("Retry-After");
+      console.error(`Rate limited. Retry after: ${retryAfter}s`);
+      return jsonResponse({
+        type: 4,
+        data: {
+          content: "⚠️ 現在、リクエストが集中しています。しばらく待ってから再度お試しください。",
+          flags: 64,
+        },
+      });
+    }
 
     if (!roleRes.ok) {
       const errorText = await roleRes.text();
       console.error(`Role assignment failed: ${errorText}`);
       return jsonResponse({
         type: 4,
-      data: {
-        content: "⚠️ ロールの付与に失敗しました。管理者に連絡してください。",
-        flags: 64,
-      },
+        data: {
+          content: "⚠️ ロールの付与に失敗しました。管理者に連絡してください。",
+          flags: 64,
+        },
       });
     }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      console.error("Role assignment timeout");
+      return jsonResponse({
+        type: 4,
+        data: {
+          content: "⚠️ ロールの付与がタイムアウトしました。しばらく待ってから再度お試しください。",
+          flags: 64,
+        },
+      });
+    }
+    throw error;
+  }
 
-    // DB更新 (Discord IDを紐付け)
-    await supabase
-      .from("members")
-      .update({ discord_user_id: userId })
-      .eq("id", member.id);
+  // discord_user_idを更新
+  await supabase
+    .from("members")
+    .update({ discord_user_id: userId })
+    .eq("id", member.id);
 
-    return jsonResponse({
-      type: 4,
+  return jsonResponse({
+    type: 4,
     data: {
       content:
         "🎉 **認証成功！**\nLibrary Memberの権限を付与しました。\n左側のメニューに限定チャンネルが表示されているか確認してください。",
     },
-    });
-  }
+  });
+}
 
 // ============================================
 // /sec-brief-latest コマンドハンドラ
 // 最新のドラフトをephemeralでプレビュー
 // ============================================
-async function handleSecBriefLatest(supabase: SupabaseClient): Promise<Response> {
+async function handleSecBriefLatest(): Promise<Response> {
   const { data, error } = await supabase
     .from("sec_brief")
     .select("*")
@@ -222,8 +268,7 @@ async function handleSecBriefLatest(supabase: SupabaseClient): Promise<Response>
 // ドラフトを#sec-briefに公開してstatusをpublishedに変更
 // ============================================
 async function handleSecBriefPublish(
-  interaction: DiscordInteraction,
-  supabase: SupabaseClient
+  interaction: DiscordInteraction
 ): Promise<Response> {
   // 最新のドラフトを取得
   const { data, error } = await supabase
@@ -346,10 +391,12 @@ function jsonResponse(body: unknown): Response {
 
 // 署名検証
 function verifySignature(
-  signature: string,
-  timestamp: string,
+  signature: string | null,
+  timestamp: string | null,
   body: string
 ): boolean {
+  if (!signature || !timestamp) return false;
+  
   try {
     return nacl.sign.detached.verify(
       new TextEncoder().encode(timestamp + body),
