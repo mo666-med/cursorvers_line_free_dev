@@ -236,8 +236,8 @@ serve(async (req) => {
           lineUserId: lineUserId?.slice(-4) ?? "null",
           status: res.status,
         });
-      // 401エラーの場合は友だちでない可能性があるため、検証をスキップ
-      if (res.status !== 401) {
+      // 401または404エラーの場合は友だちでない可能性があるため、検証をスキップ
+      if (res.status !== 401 && res.status !== 404) {
         return badRequest("LINE verification failed", res.status);
       }
     } else {
