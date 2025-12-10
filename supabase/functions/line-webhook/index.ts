@@ -934,9 +934,9 @@ serve(async (req: Request): Promise<Response> => {
 
   const events = body.events ?? [];
   
-  // 各イベントは並列で処理（ただしOpenAI部分は非同期キックのみ）
-  await Promise.all(events.map((ev) => handleEvent(ev)));
+  // 重い処理は非同期キック（タイムアウト解消のため即200を返す）
+  void Promise.all(events.map((ev) => handleEvent(ev)));
 
-  // replyMessage は handleEvent 内で済ませているので、ここは常に 200 でOK
+  // 即200を返す（処理はバックグラウンドで継続）
   return new Response("OK", { status: 200 });
 });
