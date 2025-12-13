@@ -1,17 +1,6 @@
 
 プロジェクト
 
-GitHub CLIでの実行権限がないため、GitHub Web UIから手動実行します。
-以下のURLにアクセスして、手動実行してください：
-Manus Audit (Daily) 手動実行URL:
-https://github.com/mo666-med/cursorvers_line_free_dev/actions/workflows/manus-audit-daily.yml
-手動実行手順
-上記URLをクリック
-右上の「Run workflow」ボタンをクリック
-「Run workflow」を再度クリック
-実行が開始されたら、「実行開始しました」とお知らせください 。実行結果を確認します。
-開始
-実行開始を確認しました。ワークフローの実行結果を確認します。
 GitHub CLIで権限不足のため、Web UIから手動実行を案内し、実行開始を確認した。次は結果の確認と報告を進める。
 
 Run echo "🔍 日次監査を実行中..."
@@ -93,84 +82,33 @@ manus-audit-daily-fixed.yml
 コード · 2.28 KB
 
 このタスク内のすべてのファイルを表示
-タスクが完了しました
-この結果はどうでしたか？
-おすすめの追跡質問
+開始
+実行開始を確認しました。結果を確認します。
+別のYAML構文エラーが発生しています。今度は6行目にエラーがあります。
+ファイルを確認させてください。編集中に何か問題が発生した可能性があります。
+修正済みのYAMLコードを提供し、次のエラーは6行目の構文問題です。引き続き確認と修正を行います。
+
+大きな問題が発生しています！
+ファイルの内容が完全に壊れています。YAMLファイルではなく、日本語のテキスト（私の説明文）が誤って貼り付けられています。
+ファイルを元の正しい状態に戻す必要があります。以下のURLから、添付した正しいYAMLファイルの内容をすべてコピーして、ファイル全体を置き換えてください：
+https://github.com/mo666-med/cursorvers_line_free_dev/edit/main/.github/workflows/manus-audit-daily.yml
+手順:
+上記URLにアクセス
+ファイルの内容をすべて削除
+先ほど添付した manus-audit-daily-fixed.yml の内容をすべてコピーして貼り付け
+"Commit changes" をクリック
+これで正しいYAMLファイルに戻ります 。
+Manus はあなたの返信後に作業を続けます
 Manus にメッセージを送る
 GmailGoogle カレンダーGitHub
 +10
 
 Manusのコンピュータ
-Manus はエディタを使用しています
-ファイルを作成しています
-manus-audit-daily-fixed.yml
-manus-audit-daily-fixed.yml
-# .github/workflows/manus-audit-daily.yml
-# 日次監査: カード在庫・配信成功率をチェック
+Manus はブラウザを使用しています
+閲覧中
+https://github.com/mo666-med/cursorvers_line_free_dev/blob/main/.github/workflows/manus-audit-daily.yml
+https://github.com/mo666-med/cursorvers_line_free_dev/blob/main/.github/workflows/manus-audit-daily.yml
 
-name: Manus Audit (Daily)
-
-on:
-  schedule:
-    # 毎日 04:00 JST (19:00 UTC前日)
-    - cron: '0 19 * * *'
-  workflow_dispatch:
-    # 手動実行も可能
-
-jobs:
-  audit:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    steps:
-      - name: Run daily audit
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          MANUS_AUDIT_API_KEY: ${{ secrets.MANUS_AUDIT_API_KEY }}
-        run: |
-          echo "🔍 日次監査を実行中..."
-          
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-            "${SUPABASE_URL}/functions/v1/manus-audit-line-daily-brief?mode=daily" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${MANUS_AUDIT_API_KEY}")
-          
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-          
-          echo "Response: $BODY"
-          echo "HTTP Code: $HTTP_CODE"
-          
-          if [ "$HTTP_CODE" -ne 200 ]; then
-            echo "❌ 監査が失敗しました (HTTP $HTTP_CODE)"
-            exit 1
-          fi
-          
-          # Check if there are warnings or errors
-          ALL_PASSED=$(echo "$BODY" | jq -r '.summary.allPassed // false')
-          WARNING_COUNT=$(echo "$BODY" | jq -r '.summary.warningCount // 0')
-          ERROR_COUNT=$(echo "$BODY" | jq -r '.summary.errorCount // 0')
-          
-          if [ "$ALL_PASSED" = "true" ]; then
-            echo "✅ 監査完了: 全て正常"
-          else
-            echo "⚠️ 監査完了: ${WARNING_COUNT}件の警告、${ERROR_COUNT}件のエラー"
-            # Don't fail the workflow for warnings, only for errors
-            if [ "$ERROR_COUNT" -gt 0 ]; then
-              exit 1
-            fi
-          fi
-
-      - name: Notify on failure
-        if: failure()
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_ADMIN_WEBHOOK_URL }}
-        run: |
-          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
-            curl -X POST "$DISCORD_WEBHOOK_URL" \
-              -H "Content-Type: application/json" \
-              -d '{"content": "🚨 **Manus日次監査が失敗しました**\nhttps://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}'
-          fi
 
 
 ライブ
@@ -242,3 +180,4 @@ jobs:
               -d '{"content": "🚨 **Manus日次監査が失敗しました**\nhttps://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}'
           fi
 Cursorversシステムの日次点検・修繕・報告プロセス - Manus
+
