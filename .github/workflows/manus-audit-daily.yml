@@ -1,3 +1,110 @@
+
+プロジェクト
+
+GitHub CLIでの実行権限がないため、GitHub Web UIから手動実行します。
+以下のURLにアクセスして、手動実行してください：
+Manus Audit (Daily) 手動実行URL:
+https://github.com/mo666-med/cursorvers_line_free_dev/actions/workflows/manus-audit-daily.yml
+手動実行手順
+上記URLをクリック
+右上の「Run workflow」ボタンをクリック
+「Run workflow」を再度クリック
+実行が開始されたら、「実行開始しました」とお知らせください 。実行結果を確認します。
+開始
+実行開始を確認しました。ワークフローの実行結果を確認します。
+GitHub CLIで権限不足のため、Web UIから手動実行を案内し、実行開始を確認した。次は結果の確認と報告を進める。
+
+Run echo "🔍 日次監査を実行中..."
+🔍 日次監査を実行中...
+Response: {"code":401,"message":"Missing authorization header"}
+HTTP Code: 401
+❌ 監査が失敗しました (HTTP 401)
+Error: Process completed with exit code 1.
+ログを確認したところ、まだX-API-Keyヘッダーが使用されています。修正がGitHubに反映されていない可能性があります。
+ログの4行目に以下が表示されています：
+Plain Text
+-H "X-API-Key: ${MANUS_AUDIT_API_KEY}")
+GitHubのファイルを確認して、修正が正しく保存されているか確認させてください。
+失敗の原因は、認証ヘッダーに古い`X-API-Key`が残っているため。修正が反映されているか、GitHubファイルを確認する必要がある。
+
+確認しました。29行目がまだ修正されていません。
+現在のコード（29行目）:
+YAML
+-H "X-API-Key: ${MANUS_AUDIT_API_KEY}")
+修正が保存されていないようです。以下のURLから直接編集してください：
+https://github.com/mo666-med/cursorvers_line_free_dev/edit/main/.github/workflows/manus-audit-daily.yml
+29行目を以下のように変更:
+YAML
+-H "Authorization: Bearer ${MANUS_AUDIT_API_KEY}" )
+つまり、X-API-Key を Authorization: Bearer に置き換えてください。
+修正完了後、「修正完了」とお知らせください。
+完了
+修正完了を確認しました。それでは、修正されたワークフローを再度実行してテストします。
+以下のURLから手動実行をお願いします：
+https://github.com/mo666-med/cursorvers_line_free_dev/actions/workflows/manus-audit-daily.yml
+実行開始後、「実行開始」とお知らせください 。
+開始
+実行開始を確認しました。結果を確認します。
+認証ヘッダーの修正は未反映。次に、手動実行して結果を確認し、正しく動作しているか確かめる予定です。
+
+修正したワークフローは複数の実行が失敗しており、認証ヘッダー修正の反映が確認できない。次はログを詳細に確認し、原因特定と修正を行う予定。
+
+失敗した実行のログ確認中。認証ヘッダー修正反映を確認できず、詳細ログと原因特定を次のステップとする。
+
+YAMLシンタックスエラーが発生しています。
+エラー内容：
+Plain Text
+Invalid workflow file: .github/workflows/manus-audit-daily.yml#L34
+You have an error in your yaml syntax on line 34
+34行目に構文エラーがあります。ファイルを確認して、正しく修正されているか確認させてください。
+YAMLの34行目に構文エラーがあり、ワークフローファイルの修正が必要。次は該当箇所を確認して修正予定。
+
+YAML構文エラーの原因を特定しました。
+問題
+29行目に余分なスペースがあります：
+現在（誤り）:
+YAML
+-H "Authorization: Bearer ${MANUS_AUDIT_API_KEY}" )
+↑ " と ) の間に余分なスペースがあります
+正しい記述:
+YAML
+-H "Authorization: Bearer ${MANUS_AUDIT_API_KEY}")
+修正方法
+以下のURLから29行目を編集してください：
+https://github.com/mo666-med/cursorvers_line_free_dev/edit/main/.github/workflows/manus-audit-daily.yml
+29行目の " と  ) の間のスペースを削除してください。
+修正完了後、「修正完了」とお知らせください。
+コードを一本だしして
+了解しました。修正後の完全なコードを提示します。
+修正済みの完全なコードを添付しました。
+重要な修正箇所
+29行目（修正済み）:
+YAML
+            -H "Authorization: Bearer ${MANUS_AUDIT_API_KEY}")
+この行をそのままコピーして、GitHubの29行目に貼り付けてください。
+修正手順
+https://github.com/mo666-med/cursorvers_line_free_dev/edit/main/.github/workflows/manus-audit-daily.yml にアクセス
+29行目全体を削除
+添付ファイルの29行目をコピーして貼り付け
+"Commit changes" をクリック
+または、添付ファイルの内容をすべてコピーして、ファイル全体を置き換えることもできます 。
+修正完了後、「完了」とお知らせください。
+manus-audit-daily-fixed.yml
+コード · 2.28 KB
+
+このタスク内のすべてのファイルを表示
+タスクが完了しました
+この結果はどうでしたか？
+おすすめの追跡質問
+Manus にメッセージを送る
+GmailGoogle カレンダーGitHub
++10
+
+Manusのコンピュータ
+Manus はエディタを使用しています
+ファイルを作成しています
+manus-audit-daily-fixed.yml
+manus-audit-daily-fixed.yml
 # .github/workflows/manus-audit-daily.yml
 # 日次監査: カード在庫・配信成功率をチェック
 
@@ -26,7 +133,7 @@ jobs:
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             "${SUPABASE_URL}/functions/v1/manus-audit-line-daily-brief?mode=daily" \
             -H "Content-Type: application/json" \
-　　　　　　　-H "Authorization: Bearer ${MANUS_AUDIT_API_KEY}" )
+            -H "Authorization: Bearer ${MANUS_AUDIT_API_KEY}")
           
           HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
           BODY=$(echo "$RESPONSE" | sed '$d')
@@ -66,3 +173,72 @@ jobs:
           fi
 
 
+ライブ
+manus-audit-daily-fixed.yml
+# .github/workflows/manus-audit-daily.yml
+# 日次監査: カード在庫・配信成功率をチェック
+
+name: Manus Audit (Daily)
+
+on:
+  schedule:
+    # 毎日 04:00 JST (19:00 UTC前日)
+    - cron: '0 19 * * *'
+  workflow_dispatch:
+    # 手動実行も可能
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Run daily audit
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          MANUS_AUDIT_API_KEY: ${{ secrets.MANUS_AUDIT_API_KEY }}
+        run: |
+          echo "🔍 日次監査を実行中..."
+          
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "${SUPABASE_URL}/functions/v1/manus-audit-line-daily-brief?mode=daily" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${MANUS_AUDIT_API_KEY}")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+          
+          echo "Response: $BODY"
+          echo "HTTP Code: $HTTP_CODE"
+          
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "❌ 監査が失敗しました (HTTP $HTTP_CODE)"
+            exit 1
+          fi
+          
+          # Check if there are warnings or errors
+          ALL_PASSED=$(echo "$BODY" | jq -r '.summary.allPassed // false')
+          WARNING_COUNT=$(echo "$BODY" | jq -r '.summary.warningCount // 0')
+          ERROR_COUNT=$(echo "$BODY" | jq -r '.summary.errorCount // 0')
+          
+          if [ "$ALL_PASSED" = "true" ]; then
+            echo "✅ 監査完了: 全て正常"
+          else
+            echo "⚠️ 監査完了: ${WARNING_COUNT}件の警告、${ERROR_COUNT}件のエラー"
+            # Don't fail the workflow for warnings, only for errors
+            if [ "$ERROR_COUNT" -gt 0 ]; then
+              exit 1
+            fi
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_ADMIN_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            curl -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d '{"content": "🚨 **Manus日次監査が失敗しました**\nhttps://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}'
+          fi
+Cursorversシステムの日次点検・修繕・報告プロセス - Manus
