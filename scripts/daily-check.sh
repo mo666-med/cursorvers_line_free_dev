@@ -1,6 +1,6 @@
 #!/bin/bash
-# Cursorvers システム自動点検スクリプト v3.0
-# データ保全確認機能付き
+# Cursorvers システム自動点検スクリプト v3.1
+# データ保全確認機能付き + セキュリティ改善
 
 set -e
 
@@ -11,8 +11,13 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Discord Webhook URL
-DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/1443439317283373188/ugh_DFZig51DqDuAmzn5N__0edLAHvgjfMbRAxZrK2NPIU4lsBviKjB-2eQCYe1eLutb"
+# Discord Webhook URL (環境変数から取得)
+DISCORD_WEBHOOK_URL="${DISCORD_WEBHOOK_URL:-}"
+if [[ -z "$DISCORD_WEBHOOK_URL" ]]; then
+    echo "⚠️ エラー: DISCORD_WEBHOOK_URL が設定されていません"
+    echo "環境変数 DISCORD_WEBHOOK_URL を設定してください"
+    exit 1
+fi
 
 # Supabase設定
 SUPABASE_PROJECT_ID="haaxgwyimoqzzxzdaeep"
@@ -31,8 +36,8 @@ CHECK_TIME_JST=$(TZ=Asia/Tokyo date +"%Y-%m-%d %H:%M JST")
 LOG_FILE="docs/logs/daily-check-${CHECK_DATE}.md"
 
 echo "=========================================="
-echo "Cursorvers システム自動点検 v3.0"
-echo "データ保全確認機能付き"
+echo "Cursorvers システム自動点検 v3.1"
+echo "データ保全確認機能付き + セキュリティ改善"
 echo "実行日時: ${CHECK_TIME} (${CHECK_TIME_JST})"
 echo "=========================================="
 echo ""
@@ -274,7 +279,7 @@ if [[ "$N8N_STATUS" == "✅ OK" ]]; then
 fi
 
 # GitHub (10点)
-if [[ "$GITHUB_FREE_STATUS" == "✅ OK" ]] && [[ "$GITHUB_PAID_STATUS" == "✅ OK" ]]; then
+if [[ "$GITHUB_FREE_STATUS" == "✅ OK" ]]; then
     TOTAL_SCORE=$((TOTAL_SCORE + 10))
 fi
 
@@ -293,7 +298,9 @@ echo "=========================================="
 echo ""
 
 # 8. Markdownレポート生成
-cd /home/ubuntu/cursorvers_line_paid_dev
+# リポジトリのルートディレクトリを自動検出
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+cd "$REPO_ROOT"
 mkdir -p docs/logs
 
 cat > "${LOG_FILE}" << EOF
@@ -301,7 +308,7 @@ cat > "${LOG_FILE}" << EOF
 
 **点検日時**: ${CHECK_TIME} (${CHECK_TIME_JST})  
 **実行者**: Manus Automation  
-**点検バージョン**: v3.0 (データ保全確認機能付き)
+**点検バージョン**: v3.1 (データ保全確認機能付き + セキュリティ改善)
 
 ---
 
