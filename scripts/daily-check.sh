@@ -213,33 +213,45 @@ echo ""
 # 6. GitHub リポジトリ確認
 echo "🔍 6. GitHub リポジトリ確認..."
 
-# Free版リポジトリ
-if [[ -d "/tmp/cursorvers_line_free_dev" ]]; then
-    cd /tmp/cursorvers_line_free_dev
-    git pull origin main > /dev/null 2>&1
-else
-    cd /tmp
-    if gh repo clone mo666-med/cursorvers_line_free_dev > /dev/null 2>&1; then
-        cd cursorvers_line_free_dev
-    else
-        echo -e "${YELLOW}⚠️ GitHub: リポジトリのクローンに失敗（スキップ）${NC}"
-        GITHUB_FREE_STATUS="⚠️ SKIPPED"
-        GITHUB_FREE_DETAIL="リポジトリのクローンに失敗"
-        echo ""
-        # スキップして次のステップへ
-        GITHUB_FREE_COMMIT="N/A"
-        GITHUB_FREE_DATE="N/A"
-        GITHUB_FREE_MSG="N/A"
-    fi
-fi
-
-if [[ "$GITHUB_FREE_STATUS" != "⚠️ SKIPPED" ]]; then
+# GitHub Actions環境を検出
+if [[ -n "$GITHUB_ACTIONS" ]]; then
+    # GitHub Actions環境では、現在のディレクトリを使用
+    echo -e "${BLUE}   GitHub Actions環境を検出 - 現在のディレクトリを使用${NC}"
     GITHUB_FREE_COMMIT=$(git log -1 --pretty=format:"%h" 2>/dev/null || echo "N/A")
     GITHUB_FREE_DATE=$(git log -1 --pretty=format:"%ad" --date=short 2>/dev/null || echo "N/A")
     GITHUB_FREE_MSG=$(git log -1 --pretty=format:"%s" 2>/dev/null || echo "N/A")
     GITHUB_FREE_STATUS="✅ OK"
     GITHUB_FREE_DETAIL="最新: ${GITHUB_FREE_COMMIT} (${GITHUB_FREE_DATE})"
     echo -e "${GREEN}✅ GitHub Free: ${GITHUB_FREE_COMMIT} (${GITHUB_FREE_DATE})${NC}"
+else
+    # ローカル環境では、クローンを試みる
+    if [[ -d "/tmp/cursorvers_line_free_dev" ]]; then
+        cd /tmp/cursorvers_line_free_dev
+        git pull origin main > /dev/null 2>&1
+    else
+        cd /tmp
+        if gh repo clone mo666-med/cursorvers_line_free_dev > /dev/null 2>&1; then
+            cd cursorvers_line_free_dev
+        else
+            echo -e "${YELLOW}⚠️ GitHub: リポジトリのクローンに失敗（スキップ）${NC}"
+            GITHUB_FREE_STATUS="⚠️ SKIPPED"
+            GITHUB_FREE_DETAIL="リポジトリのクローンに失敗"
+            echo ""
+            # スキップして次のステップへ
+            GITHUB_FREE_COMMIT="N/A"
+            GITHUB_FREE_DATE="N/A"
+            GITHUB_FREE_MSG="N/A"
+        fi
+    fi
+    
+    if [[ "$GITHUB_FREE_STATUS" != "⚠️ SKIPPED" ]]; then
+        GITHUB_FREE_COMMIT=$(git log -1 --pretty=format:"%h" 2>/dev/null || echo "N/A")
+        GITHUB_FREE_DATE=$(git log -1 --pretty=format:"%ad" --date=short 2>/dev/null || echo "N/A")
+        GITHUB_FREE_MSG=$(git log -1 --pretty=format:"%s" 2>/dev/null || echo "N/A")
+        GITHUB_FREE_STATUS="✅ OK"
+        GITHUB_FREE_DETAIL="最新: ${GITHUB_FREE_COMMIT} (${GITHUB_FREE_DATE})"
+        echo -e "${GREEN}✅ GitHub Free: ${GITHUB_FREE_COMMIT} (${GITHUB_FREE_DATE})${NC}"
+    fi
 fi
 
 # Paid版リポジトリは削除されたため、確認不要
