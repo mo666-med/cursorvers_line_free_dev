@@ -176,17 +176,27 @@ echo ""
 # 5. n8n ワークフロー状態確認
 echo "🔍 5. n8n ワークフロー状態確認..."
 if [[ -n "$N8N_API_KEY" ]] && [[ -n "$N8N_INSTANCE_URL" ]]; then
-    N8N_RESPONSE=$(curl -s -H "X-N8N-API-KEY: ${N8N_API_KEY}" "https://n8n.srv995974.hstgr.cloud/api/v1/workflows")
-    N8N_ACTIVE_COUNT=$(echo "$N8N_RESPONSE" | grep -o '"active":true' | wc -l)
+    # タイムアウト10秒でAPIリクエスト
+    N8N_RESPONSE=$(curl -s --max-time 10 -H "X-N8N-API-KEY: ${N8N_API_KEY}" "https://n8n.srv995974.hstgr.cloud/api/v1/workflows" 2>&1)
     
-    if [[ $N8N_ACTIVE_COUNT -gt 0 ]]; then
-        N8N_STATUS="✅ OK"
-        N8N_DETAIL="${N8N_ACTIVE_COUNT}個のワークフローがアクティブ"
-        echo -e "${GREEN}✅ n8n: ${N8N_ACTIVE_COUNT}個のワークフローがアクティブ${NC}"
+    # curlの終了コードを確認
+    if [[ $? -ne 0 ]]; then
+        N8N_STATUS="❌ ERROR"
+        N8N_DETAIL="APIリクエストが失敗（タイムアウトまたは接続エラー）"
+        echo -e "${RED}❌ n8n: APIリクエストが失敗${NC}"
+        echo -e "${YELLOW}   n8nインスタンスがダウンしている可能性があります${NC}"
     else
-        N8N_STATUS="⚠️ WARNING"
-        N8N_DETAIL="アクティブなワークフローが見つかりません"
-        echo -e "${YELLOW}⚠️ n8n: アクティブなワークフローが見つかりません${NC}"
+        N8N_ACTIVE_COUNT=$(echo "$N8N_RESPONSE" | grep -o '"active":true' | wc -l)
+    
+        if [[ $N8N_ACTIVE_COUNT -gt 0 ]]; then
+            N8N_STATUS="✅ OK"
+            N8N_DETAIL="${N8N_ACTIVE_COUNT}個のワークフローがアクティブ"
+            echo -e "${GREEN}✅ n8n: ${N8N_ACTIVE_COUNT}個のワークフローがアクティブ${NC}"
+        else
+            N8N_STATUS="⚠️ WARNING"
+            N8N_DETAIL="アクティブなワークフローが見つかりません"
+            echo -e "${YELLOW}⚠️ n8n: アクティブなワークフローが見つかりません${NC}"
+        fi
     fi
 else
     N8N_STATUS="⚠️ SKIPPED"
