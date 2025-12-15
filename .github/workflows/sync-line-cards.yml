@@ -41,7 +41,7 @@ jobs:
           echo "📚 Obsidian VaultからLINEカードを同期中..."
           
           cd scripts/export-line-cards
-          deno run --allow-read --allow-env --allow-net src/main.ts
+          deno run --allow-read --allow-env --allow-net --no-lock src/main.ts
           
           echo "✅ 同期完了"
 
