@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: mo666-med/obsidian-pro-kit-for-market-vault
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.OBSIDIAN_VAULT_TOKEN }}
           path: vault
 
       - name: Setup Deno
