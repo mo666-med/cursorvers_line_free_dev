@@ -36,7 +36,7 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          VAULT_PATH: ./vault
+          VAULT_PATH: ${{ github.workspace }}/vault
         run: |
           echo "📚 Obsidian VaultからLINEカードを同期中..."
           
