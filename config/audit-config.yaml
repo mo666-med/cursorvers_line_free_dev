@@ -1,0 +1,95 @@
+# Cursorvers System Audit Configuration
+# Created: 2025-12-16
+# Description: 日次システム点検用の設定ファイル
+
+# ===========================================
+# サービス設定
+# ===========================================
+
+services:
+  # LINE Bot (Supabase Edge Function)
+  line_bot:
+    name: "LINE Bot"
+    endpoint: "https://haaxgwyimoqzzxzdaeep.supabase.co/functions/v1/line-bot"
+    method: "GET"
+    expected_status: 200
+    enabled: true
+
+  # n8n Workflow
+  n8n:
+    name: "n8n Workflow"
+    base_url: "https://n8n.srv995974.hstgr.cloud"
+    api_endpoint: "/api/v1/workflows"
+    # API Keyは環境変数から取得
+    # 有効なAPI Key: n8n for Cursorver LINE-Discord (末尾: XHBU, Never expires)
+    api_key_env: "N8N_API_KEY"
+    # 注意: 環境変数が期限切れの場合は以下のAPI Keyを使用
+    # 新しいAPI Key (2025-12-14作成): 末尾XHBU
+    enabled: true
+
+  # Supabase
+  supabase:
+    name: "Supabase"
+    project_url: "https://haaxgwyimoqzzxzdaeep.supabase.co"
+    # Access Tokenは環境変数から取得
+    access_token_env: "SUPABASE_ACCESS_TOKEN"
+    enabled: true
+
+  # Discord Webhook
+  discord:
+    name: "Discord Webhook"
+    # Webhook URLは環境変数から取得
+    webhook_url_env: "DISCORD_WEBHOOK_URL"
+    enabled: false  # URL未設定のため無効化
+
+  # GitHub Repositories
+  github:
+    name: "GitHub"
+    repositories:
+      - owner: "mo666-med"
+        repo: "cursorvers_line_free_dev"
+        enabled: true
+      # paid_devは削除済みのため監査対象から除外
+      # - owner: "mo666-med"
+      #   repo: "cursorvers_line_paid_dev"
+      #   enabled: false
+
+# ===========================================
+# 監査スケジュール
+# ===========================================
+
+schedule:
+  # 毎朝6時（JST）に実行
+  cron: "0 21 * * *"  # UTC 21:00 = JST 06:00
+  timezone: "Asia/Tokyo"
+
+# ===========================================
+# 報告設定
+# ===========================================
+
+reporting:
+  # Discord報告
+  discord:
+    enabled: false  # Webhook URL設定後にtrueに変更
+    channel: "system-alerts"
+  
+  # GitHub ログ保存
+  github:
+    enabled: true
+    repository: "mo666-med/cursorvers_line_free_dev"
+    log_path: "docs/logs/"
+    auto_push: true
+
+# ===========================================
+# 環境変数メモ
+# ===========================================
+# 
+# 必要な環境変数:
+# - N8N_API_KEY: n8n API Key (末尾XHBUのものを使用)
+# - SUPABASE_ACCESS_TOKEN: Supabase Access Token
+# - DISCORD_WEBHOOK_URL: Discord Webhook URL (オプション)
+#
+# n8n API Key更新履歴:
+# - 2025-12-14: "n8n for Cursorver LINE-Discord" 作成 (Never expires, 末尾XHBU)
+# - 旧API Key "test1" (末尾uyB0) は期限切れ
+#
