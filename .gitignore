@@ -5,3 +5,6 @@ scripts/export-line-cards/package-lock.json
 # Node modules
 node_modules/
 .env
+
+# Supabase CLI temp files
+supabase/.temp/
