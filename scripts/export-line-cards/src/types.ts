@@ -4,12 +4,16 @@
 
 /** Card theme categories */
 export type CardTheme =
-  | "ai_gov"   // 医療AIガバナンス
-  | "tax"      // 税務・資産形成
+  | "ai_gov"   // 医療AI/ヘルスケアDX
+  | "tax"      // 税務・節税
   | "law"      // 法務・契約
-  | "biz"      // Cursorvers事業戦略
-  | "career"   // 医師キャリア・働き方
-  | "asset"    // 個人の資産形成
+  | "biz"      // 事業戦略・経営
+  | "career"   // キャリア・働き方
+  | "asset"    // 資産形成・投資
+  | "tech"     // 開発・プログラミング
+  | "crypto"   // 暗号資産・Web3
+  | "thought"  // 考察・意見
+  | "life"     // 日常・雑記
   | "general"; // その他
 
 /** Card status in database */
@@ -23,6 +27,10 @@ export const THEME_TAG_MAP: Record<string, CardTheme> = {
   "#biz": "biz",
   "#career": "career",
   "#asset": "asset",
+  "#tech": "tech",
+  "#crypto": "crypto",
+  "#thought": "thought",
+  "#life": "life",
 };
 
 /** Main extraction tag */

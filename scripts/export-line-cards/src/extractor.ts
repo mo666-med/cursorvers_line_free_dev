@@ -41,7 +41,7 @@ function extractTheme(line: string): CardTheme {
  * Remove all tags from a line and clean up formatting
  */
 function cleanCardBody(line: string): string {
-  // Remove #cv_line and theme tags
+  // Remove #cv_line and all theme tags
   let cleaned = line
     .replace(/#cv_line/g, "")
     .replace(/#ai_gov/g, "")
@@ -49,7 +49,11 @@ function cleanCardBody(line: string): string {
     .replace(/#law/g, "")
     .replace(/#biz/g, "")
     .replace(/#career/g, "")
-    .replace(/#asset/g, "");
+    .replace(/#asset/g, "")
+    .replace(/#tech/g, "")
+    .replace(/#crypto/g, "")
+    .replace(/#thought/g, "")
+    .replace(/#life/g, "");
 
   // Remove bullet points and leading whitespace
   cleaned = cleaned.replace(/^[\s]*[-*+][\s]+/, "");
