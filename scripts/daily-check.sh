@@ -60,15 +60,16 @@ GITHUB_PAID_DETAIL=""
 
 # 1. LINE Bot稼働確認
 echo "🔍 1. LINE Bot稼働確認..."
-LINE_BOT_RESPONSE=$(curl -s -X GET "https://haaxgwyimoqzzxzdaeep.supabase.co/functions/v1/line-webhook")
-if [[ "$LINE_BOT_RESPONSE" == *"OK - line-webhook is running"* ]]; then
+LINE_BOT_HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X GET "https://haaxgwyimoqzzxzdaeep.supabase.co/functions/v1/line-webhook")
+# 401は認証ヘッダーなしでの正常応答（audit-config.yaml参照）
+if [[ "$LINE_BOT_HTTP_CODE" == "200" ]] || [[ "$LINE_BOT_HTTP_CODE" == "401" ]]; then
     LINE_BOT_STATUS="✅ OK"
-    LINE_BOT_DETAIL="正常稼働中"
-    echo -e "${GREEN}✅ LINE Bot: 正常稼働中${NC}"
+    LINE_BOT_DETAIL="正常稼働中 (HTTP ${LINE_BOT_HTTP_CODE})"
+    echo -e "${GREEN}✅ LINE Bot: 正常稼働中 (HTTP ${LINE_BOT_HTTP_CODE})${NC}"
 else
     LINE_BOT_STATUS="❌ ERROR"
-    LINE_BOT_DETAIL="応答異常: ${LINE_BOT_RESPONSE}"
-    echo -e "${RED}❌ LINE Bot: 応答異常${NC}"
+    LINE_BOT_DETAIL="応答異常 (HTTP ${LINE_BOT_HTTP_CODE})"
+    echo -e "${RED}❌ LINE Bot: 応答異常 (HTTP ${LINE_BOT_HTTP_CODE})${NC}"
 fi
 echo ""
 
