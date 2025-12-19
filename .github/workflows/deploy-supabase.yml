@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - "supabase/functions/**"
-      - ".github/workflows/deploy.yml"
+      - ".github/workflows/deploy-supabase.yml"
   workflow_dispatch:
 
 env:
@@ -17,6 +17,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -27,33 +28,77 @@ jobs:
         with:
           version: latest
 
-      - name: Deploy line-bot
-        run: supabase functions deploy line-bot --project-ref "$SUPABASE_PROJECT_ID"
+      # ========================================
+      # Core Functions (JWT検証あり)
+      # ========================================
+      - name: Deploy line-webhook
+        run: supabase functions deploy line-webhook --project-ref "$SUPABASE_PROJECT_ID"
+        continue-on-error: true
+
+      - name: Deploy line-daily-brief
+        run: supabase functions deploy line-daily-brief --project-ref "$SUPABASE_PROJECT_ID"
+        continue-on-error: true
 
       - name: Deploy stats-exporter
         run: supabase functions deploy stats-exporter --project-ref "$SUPABASE_PROJECT_ID"
+        continue-on-error: true
 
       - name: Deploy health-check
         run: supabase functions deploy health-check --project-ref "$SUPABASE_PROJECT_ID"
+        continue-on-error: true
+
+      - name: Deploy manus-audit-line-daily-brief
+        run: supabase functions deploy manus-audit-line-daily-brief --project-ref "$SUPABASE_PROJECT_ID"
+        continue-on-error: true
+
+      - name: Deploy relay
+        run: supabase functions deploy relay --project-ref "$SUPABASE_PROJECT_ID"
+        continue-on-error: true
+
+      # ========================================
+      # Webhook Functions (JWT検証なし - 外部からのリクエスト受付)
+      # ========================================
+      - name: Deploy stripe-webhook
+        run: supabase functions deploy stripe-webhook --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID"
+        continue-on-error: true
+
+      - name: Deploy create-checkout-session
+        run: supabase functions deploy create-checkout-session --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID"
+        continue-on-error: true
 
       - name: Deploy ingest-hij
         run: supabase functions deploy ingest-hij --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID"
+        continue-on-error: true
 
       - name: Deploy generate-sec-brief
         run: supabase functions deploy generate-sec-brief --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID"
+        continue-on-error: true
 
       - name: Deploy line-register
         run: supabase functions deploy line-register --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID"
+        continue-on-error: true
 
       - name: Deploy discord-bot
         run: supabase functions deploy discord-bot --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID"
+        continue-on-error: true
 
+      # ========================================
+      # Notification
+      # ========================================
       - name: Send Discord notification
         if: always()
         run: |
           STATUS="${{ job.status }}"
-          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          TIMESTAMP=$(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M:%S JST')
+
+          if [ "$STATUS" = "success" ]; then
+            EMOJI="✅"
+            COLOR="5763719"
+          else
+            EMOJI="⚠️"
+            COLOR="16776960"
+          fi
+
           curl -X POST "$DISCORD_SYSTEM_WEBHOOK" \
             -H "Content-Type: application/json" \
-            -d "{\"content\":\":rocket: **Deploy ${STATUS}**\\nRepo: $GITHUB_REPOSITORY\\nCommit: ${GITHUB_SHA}\\nTime (UTC): ${TIMESTAMP}\"}"
-
+            -d "{\"embeds\": [{\"title\": \"${EMOJI} Edge Functions Deploy ${STATUS}\", \"description\": \"全12関数のデプロイを実行\", \"color\": ${COLOR}, \"fields\": [{\"name\": \"Commit\", \"value\": \"${GITHUB_SHA:0:7}\", \"inline\": true}, {\"name\": \"Time\", \"value\": \"${TIMESTAMP}\", \"inline\": true}], \"url\": \"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}]}"
