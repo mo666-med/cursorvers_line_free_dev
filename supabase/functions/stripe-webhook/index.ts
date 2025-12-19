@@ -7,6 +7,7 @@ import Stripe from "https://esm.sh/stripe@12.0.0?target=deno";
 import { notifyDiscord } from "../_shared/alert.ts";
 import { createSheetsClientFromEnv } from "../_shared/google-sheets.ts";
 import { createLogger } from "../_shared/logger.ts";
+import { pushLineMessage } from "../_shared/line-messaging.ts";
 
 const log = createLogger("stripe-webhook");
 
@@ -39,11 +40,15 @@ async function appendMemberRow(row: unknown[]) {
   }
 }
 
-// Discord招待リンクを送信
-async function sendDiscordInvite(email: string, name: string | null, tier: string) {
+// Discord招待リンクを生成し、LINE経由で送信
+async function sendDiscordInviteViaLine(
+  email: string,
+  name: string | null,
+  tier: string,
+  lineUserId: string | null
+) {
   const discordBotToken = Deno.env.get("DISCORD_BOT_TOKEN");
-  const discordRoleId = Deno.env.get("DISCORD_ROLE_ID");
-  const guildId = Deno.env.get("DISCORD_GUILD_ID") || "1316621823382728704"; // Cursorvers Discord Server ID
+  const guildId = Deno.env.get("DISCORD_GUILD_ID") || "1316621823382728704";
 
   if (!discordBotToken) {
     log.warn("DISCORD_BOT_TOKEN not set, skipping Discord invite");
@@ -61,8 +66,8 @@ async function sendDiscordInvite(email: string, name: string | null, tier: strin
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          max_age: 1209600, // 2週間（14日）
-          max_uses: 1, // 1回のみ使用可能
+          max_age: 1209600, // 2週間
+          max_uses: 1,
           unique: true,
         }),
       }
@@ -84,14 +89,38 @@ async function sendDiscordInvite(email: string, name: string | null, tier: strin
 
     log.info("Discord invite created", { email, inviteUrl });
 
-    // 招待リンクをメールで送信（実装例）
-    // TODO: メール送信機能を実装
-    log.debug("TODO: Send email with invite link", { email });
+    // LINE経由で招待リンクを送信
+    if (lineUserId) {
+      const message = [
+        "🎉 ご購入ありがとうございます！",
+        "",
+        `【${tier === "master" ? "Master Class" : "Library Member"}】`,
+        "の特典をご利用いただけます。",
+        "",
+        "━━━━━━━━━━━━━━━",
+        "📚 Discord コミュニティ",
+        "━━━━━━━━━━━━━━━",
+        "",
+        "▼ 以下のリンクから参加してください",
+        inviteUrl,
+        "",
+        "※ このリンクは2週間有効・1回限りです",
+      ].join("\n");
+
+      const sent = await pushLineMessage(lineUserId, message);
+      if (sent) {
+        log.info("Discord invite sent via LINE", { email });
+      } else {
+        log.warn("Failed to send Discord invite via LINE", { email });
+      }
+    } else {
+      log.info("No LINE user ID, invite will be sent when user registers LINE", { email });
+    }
 
     // Discordに通知（管理者用）
     await notifyDiscord({
       title: "🎉 New Member Joined!",
-      message: `**Email**: ${email}\n**Name**: ${name || "N/A"}\n**Tier**: ${tier}\n**Invite**: ${inviteUrl}`,
+      message: `**Email**: ${email}\n**Name**: ${name || "N/A"}\n**Tier**: ${tier}\n**LINE**: ${lineUserId ? "送信済" : "未登録"}\n**Invite**: ${inviteUrl}`,
     });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
@@ -218,7 +247,18 @@ Deno.serve(async (req) => {
           });
         } else {
           log.info("Member joined", { email: customerEmail, tier: membershipTier });
-          
+
+          // LINE user ID を取得（既存ユーザーの場合）
+          let lineUserId: string | null = null;
+          const { data: memberData } = await supabase
+            .from("members")
+            .select("line_user_id")
+            .eq("email", customerEmail)
+            .maybeSingle();
+          if (memberData?.line_user_id) {
+            lineUserId = memberData.line_user_id;
+          }
+
           // Google Sheets へ追記（設定されている場合のみ）
           await appendMemberRow([
             customerEmail ?? "",
@@ -227,12 +267,12 @@ Deno.serve(async (req) => {
             "active",
             nextBillingAt ?? "",
             optInEmail,
-            "", // line_user_id（Stripe決済時は未設定）
+            lineUserId ?? "",
             new Date().toISOString(),
           ]);
 
-          // Discord招待リンクを送信
-          await sendDiscordInvite(customerEmail, customerName, membershipTier);
+          // Discord招待リンクをLINE経由で送信
+          await sendDiscordInviteViaLine(customerEmail, customerName, membershipTier, lineUserId);
         }
       } else {
         log.info("Payment not completed", { email: customerEmail, paymentStatus });
