@@ -23,7 +23,7 @@
  *   - mode=monthly: Monthly audit + maintenance
  */
 
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.43.1?target=deno";
 
 type CardTheme = "ai_gov" | "tax" | "law" | "biz" | "career" | "asset" | "general";
 type AuditMode = "daily" | "weekly" | "monthly";

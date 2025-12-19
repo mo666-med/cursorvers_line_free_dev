@@ -2,7 +2,7 @@
  * LINE公式アカウント用 Webhook エントリポイント（Pocket Defense Tool）
  * 主要ロジックは lib/ 以下に分割
  */
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.43.1?target=deno";
 import { createLogger, anonymizeUserId } from "../_shared/logger.ts";
 
 const log = createLogger("line-webhook");

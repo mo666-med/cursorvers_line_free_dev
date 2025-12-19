@@ -2,7 +2,7 @@
  * Stripe Webhook Edge Function
  * Stripe決済イベントを処理し、会員情報を更新
  */
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.43.1?target=deno";
 import Stripe from "https://esm.sh/stripe@12.0.0?target=deno";
 import { notifyDiscord } from "../_shared/alert.ts";
 import { createSheetsClientFromEnv } from "../_shared/google-sheets.ts";

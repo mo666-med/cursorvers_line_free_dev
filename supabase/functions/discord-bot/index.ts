@@ -4,8 +4,8 @@
 // - /sec-brief-latest: 最新ドラフトのプレビュー
 // - /sec-brief-publish: ドラフトを#sec-briefに公開
 
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import nacl from "https://esm.sh/tweetnacl@1.0.3";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.43.1?target=deno";
+import nacl from "https://esm.sh/tweetnacl@1.0.3?target=deno";
 import { createLogger } from "../_shared/logger.ts";
 
 const log = createLogger("discord-bot");
