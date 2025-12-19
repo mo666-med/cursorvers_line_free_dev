@@ -20,6 +20,8 @@ jobs:
   check-trigger:
     name: Check Agent Trigger
     runs-on: ubuntu-latest
+    # TODO: scripts/codex-agent.js 実装後に有効化
+    if: false
     outputs:
       should_execute: ${{ steps.check.outputs.should_execute }}
       issue_number: ${{ steps.check.outputs.issue_number }}
