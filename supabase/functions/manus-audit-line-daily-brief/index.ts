@@ -730,10 +730,11 @@ Deno.serve(async (req) => {
     const url = new URL(req.url);
     const mode = (url.searchParams.get("mode") || "daily") as AuditMode;
     const isReportMode = url.searchParams.get("mode") === "report";
+    const isTestMode = url.searchParams.get("test") === "true";
     const effectiveMode: AuditMode = isReportMode ? "daily" : mode;
     const triggerMode: AuditTrigger = isReportMode ? "report" : effectiveMode;
 
-    log.info( "Starting audit", { mode: triggerMode, effectiveMode, report: isReportMode });
+    log.info( "Starting audit", { mode: triggerMode, effectiveMode, report: isReportMode, test: isTestMode });
 
     const result: AuditResult = {
       timestamp: new Date().toISOString(),
@@ -748,6 +749,16 @@ Deno.serve(async (req) => {
         errorCount: 0,
       },
     };
+
+    // テストモード: 擬似エラーを注入して自動修繕をテスト
+    if (isTestMode) {
+      log.info("Test mode: injecting simulated errors");
+      result.checks.cardInventory.passed = false;
+      result.checks.cardInventory.warnings = [
+        "🧪 [TEST] カード在庫不足をシミュレート",
+        "⚠️ 警告: testテーマのreadyカードが10枚（50枚未満）",
+      ];
+    }
 
     // Monthly checks
     if (effectiveMode === "monthly") {

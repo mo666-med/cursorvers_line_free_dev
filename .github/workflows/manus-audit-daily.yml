@@ -9,6 +9,15 @@ on:
     - cron: '0 19 * * *'
   workflow_dispatch:
     # 手動実行も可能
+    inputs:
+      test_mode:
+        description: 'テストモード（擬似エラーで自動修繕をテスト）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
 
 permissions:
   contents: write
@@ -29,11 +38,19 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           MANUS_AUDIT_API_KEY: ${{ secrets.MANUS_AUDIT_API_KEY }}
+          TEST_MODE: ${{ github.event.inputs.test_mode || 'false' }}
         run: |
           echo "🔍 Supabase監査を実行中..."
-          
+
+          # テストモードの場合はパラメータを追加
+          TEST_PARAM=""
+          if [ "$TEST_MODE" = "true" ]; then
+            echo "🧪 テストモード: 擬似エラーを注入"
+            TEST_PARAM="&test=true"
+          fi
+
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-            "${SUPABASE_URL}/functions/v1/manus-audit-line-daily-brief?mode=daily" \
+            "${SUPABASE_URL}/functions/v1/manus-audit-line-daily-brief?mode=daily${TEST_PARAM}" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${MANUS_AUDIT_API_KEY}")
           
