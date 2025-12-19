@@ -981,7 +981,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // LINE 署名検証
   const valid = await verifyLineSignature(req, rawBody);
   if (!valid) {
-    log.error("Signature verification failed");
+    log.warn("Signature verification failed");
     return new Response("Invalid signature", { status: 401 });
   }
   log.debug("Signature verified");
