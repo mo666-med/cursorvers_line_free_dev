@@ -3,7 +3,7 @@
  * Stripe決済イベントを処理し、会員情報を更新
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.43.1?target=deno";
-import Stripe from "https://esm.sh/stripe@12.0.0?target=deno";
+import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 import { notifyDiscord } from "../_shared/alert.ts";
 import { createSheetsClientFromEnv } from "../_shared/google-sheets.ts";
 import { createLogger } from "../_shared/logger.ts";
@@ -17,7 +17,7 @@ const MEMBERS_SHEET_TAB = Deno.env.get("MEMBERS_SHEET_TAB") ?? "members";
 const GOOGLE_SA_JSON = Deno.env.get("GOOGLE_SA_JSON") ?? "";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_API_KEY") as string, {
-  apiVersion: "2022-11-15",
+  apiVersion: "2023-10-16",
   httpClient: Stripe.createFetchHttpClient(),
 });
 
@@ -48,10 +48,10 @@ async function sendDiscordInviteViaLine(
   lineUserId: string | null
 ) {
   const discordBotToken = Deno.env.get("DISCORD_BOT_TOKEN");
-  const guildId = Deno.env.get("DISCORD_GUILD_ID") || "1316621823382728704";
+  const guildId = Deno.env.get("DISCORD_GUILD_ID");
 
-  if (!discordBotToken) {
-    log.warn("DISCORD_BOT_TOKEN not set, skipping Discord invite");
+  if (!discordBotToken || !guildId) {
+    log.warn("DISCORD_BOT_TOKEN or DISCORD_GUILD_ID not set, skipping Discord invite");
     return;
   }
 

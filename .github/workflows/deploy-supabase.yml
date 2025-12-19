@@ -56,7 +56,15 @@ jobs:
         continue-on-error: true
 
       # ========================================
-      # Webhook Functions (JWT検証なし - 外部からのリクエスト受付)
+      # Webhook Functions (JWT検証なし)
+      # 理由: 外部サービスからのリクエストを受け付けるため
+      # セキュリティ: 各関数内で独自の認証・署名検証を実装
+      #   - stripe-webhook: Stripe署名検証 (constructEventAsync)
+      #   - line-register: LIFF経由のリクエスト
+      #   - discord-bot: Discord署名検証
+      #   - create-checkout-session: フロントエンドからのリクエスト
+      #   - ingest-hij: API Key認証
+      #   - generate-sec-brief: API Key認証
       # ========================================
       - name: Deploy stripe-webhook
         run: supabase functions deploy stripe-webhook --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID"
