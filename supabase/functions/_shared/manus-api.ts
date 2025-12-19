@@ -124,38 +124,63 @@ export function buildRemediationPrompt(auditResult: {
   }
 
   const prompt = `
-# LINE Daily Brief システム監査で問題が検出されました
-
-以下の問題を分析し、修繕してください。
+# 🚨 LINE Daily Brief システム監査エラー - 自動修繕を実行してください
 
 ## 検出された問題
 
 ${issues.join("\n\n")}
 
-## 修繕方法
+## 🔧 修繕手順（必ず実行してください）
 
-1. **カード在庫不足の場合**:
-   - GitHubリポジトリ: mo666-med/cursorvers_line_free_dev
-   - Supabase line_cards テーブルに新規カードを追加
-   - テーマ別に50枚以上を維持
+### 環境情報
+- GitHubリポジトリ: https://github.com/mo666-med/cursorvers_line_free_dev
+- Supabase Project: haaxgwyimoqzzxzdaeep
+- Supabase URL: https://haaxgwyimoqzzxzdaeep.supabase.co
 
-2. **配信失敗の場合**:
-   - Supabase Edge Function のログを確認
-   - LINE Messaging API のエラーを調査
-   - 必要に応じてGitHub Issueを作成
+### 1. カード在庫不足の修繕
+\`\`\`bash
+# GitHub CLIでリポジトリをクローン
+gh repo clone mo666-med/cursorvers_line_free_dev
+cd cursorvers_line_free_dev
 
-3. **データベース異常の場合**:
-   - 重複コンテンツをアーカイブ
-   - 異常なレコードを調査
+# カード生成スクリプトを実行（存在する場合）
+node scripts/generate-cards.js --theme <不足テーマ> --count 50
 
-## 完了後
+# または直接Supabase SQLを実行
+# INSERT INTO line_cards (theme, content, status) VALUES ...
+\`\`\`
 
-修繕結果をDiscord webhookに報告してください:
-- 修繕した項目
-- 残りの問題（あれば）
+### 2. 配信失敗の修繕
+\`\`\`bash
+# Supabase Edge Functionのログを確認
+npx supabase functions logs line-daily-brief --project-ref haaxgwyimoqzzxzdaeep
 
-警告数: ${auditResult.summary.warningCount}
-エラー数: ${auditResult.summary.errorCount}
+# 必要に応じてEdge Functionを再デプロイ
+npx supabase functions deploy line-daily-brief --project-ref haaxgwyimoqzzxzdaeep
+\`\`\`
+
+### 3. GitHub Issueを作成（重大な問題の場合）
+\`\`\`bash
+gh issue create --repo mo666-med/cursorvers_line_free_dev \\
+  --title "🚨 自動検出: システム監査エラー" \\
+  --body "## 検出された問題\\n${issues.join("\\n")}\\n\\n## 自動修繕結果\\n（ここに結果を記載）"
+\`\`\`
+
+## ✅ 完了後の報告
+
+修繕完了後、以下のDiscord Webhookに結果を報告してください:
+
+\`\`\`bash
+curl -X POST "https://discord.com/api/webhooks/..." \\
+  -H "Content-Type: application/json" \\
+  -d '{"content": "✅ 自動修繕完了\\n修繕項目: ...\\n結果: 成功"}'
+\`\`\`
+
+## 📊 問題サマリー
+- 警告数: ${auditResult.summary.warningCount}
+- エラー数: ${auditResult.summary.errorCount}
+
+**重要**: このタスクは自動化されています。可能な限り人間の介入なしで修繕を完了してください。
 `.trim();
 
   return prompt;
