@@ -3,6 +3,9 @@
  * LINE イベントの統計情報を取得し、Discord に通知
  */
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.43.1?target=deno";
+import { createLogger, errorToContext } from "../_shared/logger.ts";
+
+const log = createLogger("health-check");
 
 interface LineEvent {
   line_user_id: string;
@@ -32,7 +35,7 @@ const supabase: SupabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROL
 
 async function sendDiscordMessage(message: string): Promise<void> {
   if (!DISCORD_WEBHOOK) {
-    console.log("[health-check] DISCORD_SYSTEM_WEBHOOK not configured, skipping notification");
+    log.info("Discord webhook not configured, skipping notification");
     return;
   }
 
@@ -43,14 +46,15 @@ async function sendDiscordMessage(message: string): Promise<void> {
       body: JSON.stringify({ content: message }),
     });
     if (!response.ok) {
-      console.error("[health-check] Discord notification failed:", response.status);
+      log.warn("Discord notification failed", { status: response.status });
     }
   } catch (err) {
-    console.error("[health-check] Failed to send Discord message:", err instanceof Error ? err.message : String(err));
+    log.error("Failed to send Discord message", errorToContext(err));
   }
 }
 
 Deno.serve(async (): Promise<Response> => {
+  const startTime = Date.now();
   const windowStart = new Date(Date.now() - HEALTH_WINDOW_MINUTES * 60 * 1000);
 
   try {
@@ -72,6 +76,14 @@ Deno.serve(async (): Promise<Response> => {
     }, {});
     const phiCount = events.filter((item) => item.contains_phi).length;
 
+    log.info("Health check completed", {
+      totalEvents,
+      riskSummary,
+      phiCount,
+      windowMinutes: HEALTH_WINDOW_MINUTES,
+      durationMs: Date.now() - startTime,
+    });
+
     await sendDiscordMessage(
       `🩺 **Health Check OK**\n` +
         `期間: 過去 ${HEALTH_WINDOW_MINUTES} 分\n` +
@@ -88,6 +100,11 @@ Deno.serve(async (): Promise<Response> => {
       { headers: { "Content-Type": "application/json" } },
     );
   } catch (err) {
+    log.error("Health check failed", {
+      ...errorToContext(err),
+      durationMs: Date.now() - startTime,
+    });
+
     const errorMessage = err instanceof Error ? err.message : String(err);
     await sendDiscordMessage(
       `🚨 **Health Check Failed**\nエラー: ${errorMessage}\n発生時刻: ${new Date().toISOString()}`,
