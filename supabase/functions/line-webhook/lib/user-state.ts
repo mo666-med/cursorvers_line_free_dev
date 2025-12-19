@@ -1,15 +1,11 @@
 /**
  * ユーザー状態管理モジュール
  */
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { supabase } from "../../_shared/supabase.ts";
+import { createLogger, anonymizeUserId } from "../../_shared/logger.ts";
 import type { DiagnosisState } from "./diagnosis-flow.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { persistSession: false },
-});
+const log = createLogger("user-state");
 
 /** ユーザーモード（プロンプト整形 or リスクチェック） */
 export type UserMode = "polish" | "risk_check" | null;
@@ -32,7 +28,7 @@ export async function getUserState(lineUserId: string): Promise<UserState | null
     .maybeSingle();
 
   if (error) {
-    console.error("[user-state] getUserState error", error);
+    log.error("getUserState failed", { userId: anonymizeUserId(lineUserId), errorMessage: error.message });
     return null;
   }
 
@@ -52,7 +48,7 @@ export async function updateUserState(
     .eq("line_user_id", lineUserId);
 
   if (error) {
-    console.error("[user-state] updateUserState error", error);
+    log.error("updateUserState failed", { userId: anonymizeUserId(lineUserId), errorMessage: error.message });
   }
 }
 
@@ -96,7 +92,7 @@ export async function clearDiagnosisState(lineUserId: string): Promise<void> {
  * ツールモードを設定
  */
 export async function setToolMode(lineUserId: string, mode: UserMode): Promise<void> {
-  console.log("[user-state] Setting tool mode:", mode, "for user:", lineUserId);
+  log.info("Setting tool mode", { userId: anonymizeUserId(lineUserId), mode });
   await updateUserState(lineUserId, { mode });
 }
 
@@ -113,13 +109,15 @@ export async function getToolMode(lineUserId: string): Promise<UserMode> {
  */
 export async function setPendingEmail(lineUserId: string, email: string): Promise<void> {
   try {
-    console.log("[user-state] setPendingEmail called for:", lineUserId.slice(-4));
+    log.debug("setPendingEmail called", { userId: anonymizeUserId(lineUserId) });
     const currentState = await getUserState(lineUserId);
-    console.log("[user-state] Current state:", JSON.stringify(currentState));
     await updateUserState(lineUserId, { ...currentState, pendingEmail: email });
-    console.log("[user-state] State updated with pendingEmail");
+    log.info("Pending email saved", { userId: anonymizeUserId(lineUserId) });
   } catch (err) {
-    console.error("[user-state] setPendingEmail error:", err);
+    log.error("setPendingEmail failed", {
+      userId: anonymizeUserId(lineUserId),
+      errorMessage: err instanceof Error ? err.message : String(err)
+    });
     throw err;
   }
 }

@@ -2,6 +2,9 @@
  * LINE Messaging API ヘルパー
  */
 import { withSafetyFooter } from "../../_shared/safety.ts";
+import { createLogger, anonymizeUserId } from "../../_shared/logger.ts";
+
+const log = createLogger("line-api");
 
 const LINE_CHANNEL_ACCESS_TOKEN = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN") ?? "";
 const LINE_CHANNEL_SECRET = Deno.env.get("LINE_CHANNEL_SECRET") ?? "";
@@ -59,7 +62,7 @@ export async function replyText(
   quickReply?: QuickReply
 ): Promise<void> {
   if (!replyToken) {
-    console.log("[line-api] replyText: No replyToken");
+    log.warn("replyText: No replyToken provided");
     return;
   }
   const message: Record<string, unknown> = { type: "text", text: withSafetyFooter(text) };
@@ -79,7 +82,7 @@ export async function replyText(
   });
   if (!res.ok) {
     const errorBody = await res.text();
-    console.error("[line-api] replyText error:", res.status, errorBody);
+    log.error("replyText failed", { status: res.status, errorBody });
   }
 }
 
@@ -87,17 +90,33 @@ export async function replyText(
  * LINE push（非同期で結果を送る用）
  */
 export async function pushText(lineUserId: string, text: string): Promise<void> {
-  await fetch("https://api.line.me/v2/bot/message/push", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
-    },
-    body: JSON.stringify({
-      to: lineUserId,
-      messages: [{ type: "text", text }],
-    }),
-  });
+  try {
+    const res = await fetch("https://api.line.me/v2/bot/message/push", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+      },
+      body: JSON.stringify({
+        to: lineUserId,
+        messages: [{ type: "text", text }],
+      }),
+    });
+
+    if (!res.ok) {
+      const errorBody = await res.text();
+      log.error("pushText failed", {
+        userId: anonymizeUserId(lineUserId),
+        status: res.status,
+        errorBody
+      });
+    }
+  } catch (err) {
+    log.error("pushText exception", {
+      userId: anonymizeUserId(lineUserId),
+      errorMessage: err instanceof Error ? err.message : String(err)
+    });
+  }
 }
 
 /**
@@ -128,7 +147,11 @@ export async function pushWithQuickReply(
 
   if (!res.ok) {
     const errorBody = await res.text();
-    console.error("[line-api] pushWithQuickReply error:", res.status, errorBody);
+    log.error("pushWithQuickReply failed", {
+      userId: anonymizeUserId(lineUserId),
+      status: res.status,
+      errorBody
+    });
   }
 }
 

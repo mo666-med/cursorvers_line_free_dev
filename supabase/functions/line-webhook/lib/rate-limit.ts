@@ -1,15 +1,12 @@
 /**
  * レート制限モジュール
  */
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { supabase } from "../../_shared/supabase.ts";
+import { createLogger, anonymizeUserId } from "../../_shared/logger.ts";
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const log = createLogger("rate-limit");
+
 const MAX_POLISH_PER_HOUR = Number(Deno.env.get("MAX_POLISH_PER_HOUR") ?? "10");
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { persistSession: false },
-});
 
 export { MAX_POLISH_PER_HOUR };
 
@@ -38,7 +35,11 @@ export async function getHourlyUsageCount(
     .order("created_at", { ascending: true });
 
   if (error) {
-    console.error(`[rate-limit] getHourlyUsageCount error for ${interactionType}:`, error);
+    log.error("getHourlyUsageCount failed", {
+      userId: anonymizeUserId(userId),
+      interactionType,
+      errorMessage: error.message
+    });
     return { count: 0, nextAvailable: null };
   }
 
