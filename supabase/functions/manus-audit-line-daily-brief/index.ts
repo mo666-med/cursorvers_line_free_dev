@@ -819,7 +819,8 @@ Deno.serve(async (req) => {
         audience: "maintenance",
       });
     } else {
-      await sendDiscordNotification(result, { force: false, webhookUrl: DISCORD_ADMIN_WEBHOOK_URL, audience: "admin" });
+      // 正常時も通知する（毎日のステータス報告）
+      await sendDiscordNotification(result, { force: true, webhookUrl: DISCORD_ADMIN_WEBHOOK_URL, audience: "admin" });
     }
 
     log.info( "Audit completed", {

@@ -5,8 +5,8 @@ name: Manus Audit (Daily)
 
 on:
   schedule:
-    # 毎日 04:00 JST (19:00 UTC前日)
-    - cron: '0 19 * * *'
+    # 毎日 06:00 JST (21:00 UTC前日)
+    - cron: '0 21 * * *'
   workflow_dispatch:
     # 手動実行も可能
     inputs:
