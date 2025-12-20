@@ -1,0 +1,251 @@
+# .github/workflows/e2e-pipeline-monitor.yml
+# End-to-End パイプライン監視
+# X → Discord → Obsidian → Supabase → LINE の全経路を監視
+
+name: E2E Pipeline Monitor
+
+on:
+  schedule:
+    # 毎日 08:00 JST (23:00 UTC) に実行（配信後1時間）
+    - cron: '0 23 * * *'
+  workflow_dispatch:
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check Discord Sync Workflow
+        id: discord_sync
+        env:
+          GH_TOKEN: ${{ secrets.OBSIDIAN_VAULT_TOKEN }}
+        run: |
+          echo "Checking Discord Sync workflow in Obsidian repo..."
+
+          # 最新のワークフロー実行を取得
+          RESULT=$(gh run list \
+            --repo mo666-med/obsidian-pro-kit-for-market-vault \
+            --workflow "Discord to Obsidian Sync" \
+            --limit 1 \
+            --json status,conclusion,createdAt \
+            2>/dev/null || echo '[]')
+
+          if [ "$RESULT" = "[]" ] || [ -z "$RESULT" ]; then
+            echo "status=unknown" >> $GITHUB_OUTPUT
+            echo "message=Workflow not found or no access" >> $GITHUB_OUTPUT
+          else
+            STATUS=$(echo "$RESULT" | jq -r '.[0].conclusion // "running"')
+            CREATED=$(echo "$RESULT" | jq -r '.[0].createdAt // ""')
+            echo "status=$STATUS" >> $GITHUB_OUTPUT
+            echo "created=$CREATED" >> $GITHUB_OUTPUT
+
+            if [ "$STATUS" = "success" ]; then
+              echo "message=Discord sync completed successfully" >> $GITHUB_OUTPUT
+            elif [ "$STATUS" = "failure" ]; then
+              echo "message=Discord sync failed!" >> $GITHUB_OUTPUT
+            else
+              echo "message=Discord sync status: $STATUS" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Check Line Cards Sync Workflow
+        id: line_cards
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Checking Line Cards Sync workflow..."
+
+          RESULT=$(gh run list \
+            --workflow "Sync Line Cards from Obsidian" \
+            --limit 1 \
+            --json status,conclusion,createdAt)
+
+          STATUS=$(echo "$RESULT" | jq -r '.[0].conclusion // "running"')
+          CREATED=$(echo "$RESULT" | jq -r '.[0].createdAt // ""')
+
+          echo "status=$STATUS" >> $GITHUB_OUTPUT
+          echo "created=$CREATED" >> $GITHUB_OUTPUT
+
+          if [ "$STATUS" = "success" ]; then
+            echo "message=Line cards sync completed successfully" >> $GITHUB_OUTPUT
+          elif [ "$STATUS" = "failure" ]; then
+            echo "message=Line cards sync failed!" >> $GITHUB_OUTPUT
+          else
+            echo "message=Line cards sync status: $STATUS" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check LINE Daily Brief Function
+        id: line_brief
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          echo "Checking LINE Daily Brief function health..."
+
+          # ヘルスチェックエンドポイントを呼び出し
+          HTTP_CODE=$(curl -s -o /tmp/health.json -w "%{http_code}" \
+            --max-time 10 \
+            -X POST "${SUPABASE_URL}/functions/v1/line-daily-brief" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{"type": "health"}' \
+            2>/dev/null || echo "000")
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "status=healthy" >> $GITHUB_OUTPUT
+            echo "message=LINE Daily Brief function is healthy" >> $GITHUB_OUTPUT
+          elif [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ]; then
+            echo "status=auth_required" >> $GITHUB_OUTPUT
+            echo "message=Auth required (expected for protected endpoint)" >> $GITHUB_OUTPUT
+          elif [ "$HTTP_CODE" = "000" ]; then
+            echo "status=timeout" >> $GITHUB_OUTPUT
+            echo "message=Connection timeout" >> $GITHUB_OUTPUT
+          else
+            echo "status=error" >> $GITHUB_OUTPUT
+            echo "message=HTTP $HTTP_CODE" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check Card Inventory
+        id: inventory
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          echo "Checking card inventory levels..."
+
+          # 利用可能なカード数を取得
+          RESULT=$(curl -s --max-time 10 \
+            "${SUPABASE_URL}/rest/v1/line_cards?status=eq.ready&select=theme" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            2>/dev/null)
+
+          if [ -n "$RESULT" ] && echo "$RESULT" | jq -e '.' >/dev/null 2>&1; then
+            TOTAL=$(echo "$RESULT" | jq 'length')
+            echo "ready_count=$TOTAL" >> $GITHUB_OUTPUT
+
+            if [ "$TOTAL" -lt 10 ]; then
+              echo "status=critical" >> $GITHUB_OUTPUT
+              echo "message=CRITICAL: Only $TOTAL cards remaining!" >> $GITHUB_OUTPUT
+            elif [ "$TOTAL" -lt 50 ]; then
+              echo "status=warning" >> $GITHUB_OUTPUT
+              echo "message=WARNING: Low inventory ($TOTAL cards)" >> $GITHUB_OUTPUT
+            else
+              echo "status=healthy" >> $GITHUB_OUTPUT
+              echo "message=Healthy inventory ($TOTAL cards)" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "status=error" >> $GITHUB_OUTPUT
+            echo "message=Failed to fetch inventory" >> $GITHUB_OUTPUT
+            echo "ready_count=0" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate Report
+        id: report
+        run: |
+          # 各ステップの結果を集計
+          ISSUES=""
+          HEALTHY=0
+          WARNINGS=0
+          ERRORS=0
+
+          # Discord Sync
+          if [ "${{ steps.discord_sync.outputs.status }}" = "success" ]; then
+            HEALTHY=$((HEALTHY + 1))
+          elif [ "${{ steps.discord_sync.outputs.status }}" = "failure" ]; then
+            ERRORS=$((ERRORS + 1))
+            ISSUES="${ISSUES}\\n- Discord Sync: ${{ steps.discord_sync.outputs.message }}"
+          else
+            WARNINGS=$((WARNINGS + 1))
+          fi
+
+          # Line Cards Sync
+          if [ "${{ steps.line_cards.outputs.status }}" = "success" ]; then
+            HEALTHY=$((HEALTHY + 1))
+          elif [ "${{ steps.line_cards.outputs.status }}" = "failure" ]; then
+            ERRORS=$((ERRORS + 1))
+            ISSUES="${ISSUES}\\n- Line Cards Sync: ${{ steps.line_cards.outputs.message }}"
+          else
+            WARNINGS=$((WARNINGS + 1))
+          fi
+
+          # LINE Brief Function
+          if [ "${{ steps.line_brief.outputs.status }}" = "healthy" ] || [ "${{ steps.line_brief.outputs.status }}" = "auth_required" ]; then
+            HEALTHY=$((HEALTHY + 1))
+          else
+            ERRORS=$((ERRORS + 1))
+            ISSUES="${ISSUES}\\n- LINE Brief: ${{ steps.line_brief.outputs.message }}"
+          fi
+
+          # Card Inventory
+          if [ "${{ steps.inventory.outputs.status }}" = "healthy" ]; then
+            HEALTHY=$((HEALTHY + 1))
+          elif [ "${{ steps.inventory.outputs.status }}" = "warning" ]; then
+            WARNINGS=$((WARNINGS + 1))
+            ISSUES="${ISSUES}\\n- Inventory: ${{ steps.inventory.outputs.message }}"
+          else
+            ERRORS=$((ERRORS + 1))
+            ISSUES="${ISSUES}\\n- Inventory: ${{ steps.inventory.outputs.message }}"
+          fi
+
+          echo "healthy=$HEALTHY" >> $GITHUB_OUTPUT
+          echo "warnings=$WARNINGS" >> $GITHUB_OUTPUT
+          echo "errors=$ERRORS" >> $GITHUB_OUTPUT
+          echo "issues=$ISSUES" >> $GITHUB_OUTPUT
+
+          # 全体ステータス判定
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "overall=error" >> $GITHUB_OUTPUT
+          elif [ "$WARNINGS" -gt 0 ]; then
+            echo "overall=warning" >> $GITHUB_OUTPUT
+          else
+            echo "overall=healthy" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Notify on Issues
+        if: steps.report.outputs.overall != 'healthy'
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_ADMIN_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            TIMESTAMP=$(TZ=Asia/Tokyo date +"%Y-%m-%d %H:%M JST")
+
+            if [ "${{ steps.report.outputs.overall }}" = "error" ]; then
+              COLOR=15158332  # Red
+              TITLE="E2E Pipeline Monitor: Issues Detected"
+            else
+              COLOR=16776960  # Yellow
+              TITLE="E2E Pipeline Monitor: Warnings"
+            fi
+
+            curl -s -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"embeds\": [{
+                  \"title\": \"$TITLE\",
+                  \"color\": $COLOR,
+                  \"fields\": [
+                    {\"name\": \"Healthy\", \"value\": \"${{ steps.report.outputs.healthy }}\", \"inline\": true},
+                    {\"name\": \"Warnings\", \"value\": \"${{ steps.report.outputs.warnings }}\", \"inline\": true},
+                    {\"name\": \"Errors\", \"value\": \"${{ steps.report.outputs.errors }}\", \"inline\": true},
+                    {\"name\": \"Card Inventory\", \"value\": \"${{ steps.inventory.outputs.ready_count }} ready\", \"inline\": true},
+                    {\"name\": \"Details\", \"value\": \"${{ steps.report.outputs.issues }}\", \"inline\": false}
+                  ],
+                  \"footer\": {\"text\": \"E2E Pipeline Monitor | ${TIMESTAMP}\"}
+                }]
+              }"
+          fi
+
+      - name: Summary
+        run: |
+          echo "## E2E Pipeline Monitor Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Status | Details |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|---------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Discord Sync | ${{ steps.discord_sync.outputs.status }} | ${{ steps.discord_sync.outputs.message }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Line Cards Sync | ${{ steps.line_cards.outputs.status }} | ${{ steps.line_cards.outputs.message }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| LINE Brief Function | ${{ steps.line_brief.outputs.status }} | ${{ steps.line_brief.outputs.message }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Card Inventory | ${{ steps.inventory.outputs.status }} | ${{ steps.inventory.outputs.ready_count }} ready cards |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Overall Status**: ${{ steps.report.outputs.overall }}" >> $GITHUB_STEP_SUMMARY
