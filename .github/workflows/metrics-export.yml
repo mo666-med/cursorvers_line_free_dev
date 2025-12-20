@@ -1,0 +1,160 @@
+# .github/workflows/metrics-export.yml
+# 週次メトリクス収集・レポート
+
+name: Weekly Metrics Report
+
+on:
+  schedule:
+    # 毎週月曜 09:00 JST (00:00 UTC)
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+jobs:
+  metrics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Collect Card Metrics
+        id: cards
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          echo "Collecting card inventory metrics..."
+
+          # カード在庫
+          CARDS=$(curl -s \
+            "${SUPABASE_URL}/rest/v1/line_cards?select=theme,status" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}")
+
+          TOTAL=$(echo "$CARDS" | jq 'length')
+          READY=$(echo "$CARDS" | jq '[.[] | select(.status == "ready")] | length')
+          USED=$(echo "$CARDS" | jq '[.[] | select(.status == "used")] | length')
+
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+          echo "ready=$READY" >> $GITHUB_OUTPUT
+          echo "used=$USED" >> $GITHUB_OUTPUT
+
+          # テーマ別
+          echo "themes<<EOF" >> $GITHUB_OUTPUT
+          echo "$CARDS" | jq -r '[.[] | select(.status == "ready")] | group_by(.theme) | .[] | "\(.[0].theme): \(length)"' >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Collect Broadcast Metrics
+        id: broadcasts
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          echo "Collecting broadcast metrics..."
+
+          # 過去7日の配信
+          WEEK_AGO=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
+
+          BROADCASTS=$(curl -s \
+            "${SUPABASE_URL}/rest/v1/line_card_broadcasts?sent_at=gte.${WEEK_AGO}&select=sent_at,success" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}")
+
+          TOTAL=$(echo "$BROADCASTS" | jq 'length')
+          SUCCESS=$(echo "$BROADCASTS" | jq '[.[] | select(.success == true)] | length')
+
+          if [ "$TOTAL" -gt 0 ]; then
+            RATE=$(echo "scale=1; $SUCCESS * 100 / $TOTAL" | bc)
+          else
+            RATE="N/A"
+          fi
+
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+          echo "success=$SUCCESS" >> $GITHUB_OUTPUT
+          echo "rate=$RATE" >> $GITHUB_OUTPUT
+
+      - name: Collect User Metrics
+        id: users
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          echo "Collecting user metrics..."
+
+          # アクティブユーザー
+          USERS=$(curl -s \
+            "${SUPABASE_URL}/rest/v1/line_users?select=created_at,blocked_at" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}")
+
+          TOTAL=$(echo "$USERS" | jq 'length')
+          ACTIVE=$(echo "$USERS" | jq '[.[] | select(.blocked_at == null)] | length')
+          BLOCKED=$(echo "$USERS" | jq '[.[] | select(.blocked_at != null)] | length')
+
+          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+          echo "active=$ACTIVE" >> $GITHUB_OUTPUT
+          echo "blocked=$BLOCKED" >> $GITHUB_OUTPUT
+
+      - name: Generate Report
+        run: |
+          TIMESTAMP=$(TZ=Asia/Tokyo date +"%Y-%m-%d %H:%M JST")
+
+          echo "## Weekly Metrics Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Generated:** ${TIMESTAMP}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Card Inventory" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Total | ${{ steps.cards.outputs.total }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Ready | ${{ steps.cards.outputs.ready }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Used | ${{ steps.cards.outputs.used }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "#### By Theme (Ready)" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.cards.outputs.themes }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Broadcast (Last 7 Days)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Total | ${{ steps.broadcasts.outputs.total }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Success | ${{ steps.broadcasts.outputs.success }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Success Rate | ${{ steps.broadcasts.outputs.rate }}% |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          echo "### Users" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | Count |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Total | ${{ steps.users.outputs.total }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Active | ${{ steps.users.outputs.active }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Blocked | ${{ steps.users.outputs.blocked }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify Discord
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_ADMIN_WEBHOOK_URL }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK_URL" ]; then
+            TIMESTAMP=$(TZ=Asia/Tokyo date +"%Y-%m-%d")
+
+            curl -s -X POST "$DISCORD_WEBHOOK_URL" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"embeds\": [{
+                  \"title\": \"Weekly Metrics Report\",
+                  \"color\": 3447003,
+                  \"fields\": [
+                    {\"name\": \"Cards (Ready/Total)\", \"value\": \"${{ steps.cards.outputs.ready }}/${{ steps.cards.outputs.total }}\", \"inline\": true},
+                    {\"name\": \"Broadcast Success\", \"value\": \"${{ steps.broadcasts.outputs.rate }}%\", \"inline\": true},
+                    {\"name\": \"Active Users\", \"value\": \"${{ steps.users.outputs.active }}\", \"inline\": true}
+                  ],
+                  \"footer\": {\"text\": \"Week of ${TIMESTAMP}\"},
+                  \"url\": \"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+                }]
+              }"
+          fi

@@ -1,0 +1,88 @@
+# .github/workflows/ci-tests.yml
+# Deno テストを実行
+
+name: CI Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**/*.ts'
+      - 'scripts/**/*.ts'
+      - '.github/workflows/ci-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/functions/**/*.ts'
+      - 'scripts/**/*.ts'
+      - '.github/workflows/ci-tests.yml'
+
+jobs:
+  test-shared:
+    name: Test Shared Modules
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v2.x
+
+      - name: Run shared module tests
+        run: |
+          cd supabase/functions/_shared
+          deno test --allow-env --allow-net --no-lock *_test.ts
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "## Shared Module Tests" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Module | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| retry.ts | Tested |" >> $GITHUB_STEP_SUMMARY
+          echo "| manus-api.ts | Tested |" >> $GITHUB_STEP_SUMMARY
+          echo "| logger.ts | Tested |" >> $GITHUB_STEP_SUMMARY
+          echo "| alert.ts | Tested |" >> $GITHUB_STEP_SUMMARY
+
+  test-export-cards:
+    name: Test Export Line Cards
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v2.x
+
+      - name: Run extractor tests
+        run: |
+          cd scripts/export-line-cards
+          deno test --allow-read --allow-write --allow-env --no-lock test/
+
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v2.x
+
+      - name: Type check shared modules
+        run: |
+          deno check supabase/functions/_shared/*.ts
+
+      - name: Type check export-line-cards
+        run: |
+          deno check scripts/export-line-cards/src/*.ts
