@@ -182,18 +182,19 @@ echo ""
 # 5. n8n ワークフロー状態確認
 echo "🔍 5. n8n ワークフロー状態確認..."
 if [[ -n "$N8N_API_KEY" ]] && [[ -n "$N8N_INSTANCE_URL" ]]; then
-    # タイムアウト10秒でAPIリクエスト
-    N8N_RESPONSE=$(curl -s --max-time 10 -H "X-N8N-API-KEY: ${N8N_API_KEY}" "${N8N_INSTANCE_URL}/api/v1/workflows" 2>&1)
-    
+    # タイムアウト10秒でAPIリクエスト（set -eでも終了しないよう || true を追加）
+    N8N_RESPONSE=$(curl -s --max-time 10 -H "X-N8N-API-KEY: ${N8N_API_KEY}" "${N8N_INSTANCE_URL}/api/v1/workflows" 2>&1) || CURL_EXIT_CODE=$?
+    CURL_EXIT_CODE=${CURL_EXIT_CODE:-0}
+
     # curlの終了コードを確認
-    if [[ $? -ne 0 ]]; then
-        N8N_STATUS="❌ ERROR"
-        N8N_DETAIL="APIリクエストが失敗（タイムアウトまたは接続エラー）"
-        echo -e "${RED}❌ n8n: APIリクエストが失敗${NC}"
+    if [[ $CURL_EXIT_CODE -ne 0 ]]; then
+        N8N_STATUS="⚠️ WARNING"
+        N8N_DETAIL="APIリクエストが失敗（タイムアウトまたは接続エラー、コード: ${CURL_EXIT_CODE}）"
+        echo -e "${YELLOW}⚠️ n8n: APIリクエストが失敗（コード: ${CURL_EXIT_CODE}）${NC}"
         echo -e "${YELLOW}   n8nインスタンスがダウンしている可能性があります${NC}"
     else
-        N8N_ACTIVE_COUNT=$(echo "$N8N_RESPONSE" | grep -o '"active":true' | wc -l)
-    
+        N8N_ACTIVE_COUNT=$(echo "$N8N_RESPONSE" | grep -o '"active":true' | wc -l || echo "0")
+
         if [[ $N8N_ACTIVE_COUNT -gt 0 ]]; then
             N8N_STATUS="✅ OK"
             N8N_DETAIL="${N8N_ACTIVE_COUNT}個のワークフローがアクティブ"
