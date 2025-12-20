@@ -5,6 +5,7 @@
  * @see https://open.manus.ai/docs/api-reference/create-task
  */
 import { createLogger } from "./logger.ts";
+import { withRetry, isRetryableStatus, isRetryableError } from "./retry.ts";
 
 const log = createLogger("manus-api");
 
@@ -17,83 +18,6 @@ const MAX_TOTAL_WARNINGS = 20;
 
 // リトライ設定
 const MAX_RETRIES = 3;
-const INITIAL_RETRY_DELAY_MS = 1000;  // 1秒
-const MAX_RETRY_DELAY_MS = 10000;     // 10秒
-
-/**
- * 指数バックオフでリトライ可能な関数を実行
- */
-async function withRetry<T>(
-  fn: () => Promise<T>,
-  options: {
-    maxRetries?: number;
-    initialDelay?: number;
-    maxDelay?: number;
-    shouldRetry?: (error: unknown) => boolean;
-    onRetry?: (attempt: number, error: unknown, nextDelay: number) => void;
-  } = {}
-): Promise<T> {
-  const {
-    maxRetries = MAX_RETRIES,
-    initialDelay = INITIAL_RETRY_DELAY_MS,
-    maxDelay = MAX_RETRY_DELAY_MS,
-    shouldRetry = () => true,
-    onRetry,
-  } = options;
-
-  let lastError: unknown;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error;
-
-      if (attempt >= maxRetries || !shouldRetry(error)) {
-        throw error;
-      }
-
-      // 指数バックオフ: delay = min(initialDelay * 2^attempt, maxDelay)
-      const delay = Math.min(initialDelay * Math.pow(2, attempt), maxDelay);
-
-      if (onRetry) {
-        onRetry(attempt + 1, error, delay);
-      }
-
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-  }
-
-  throw lastError;
-}
-
-/**
- * リトライ可能なHTTPエラーかどうかを判定
- * - 5xx: サーバーエラー（リトライ可能）
- * - 429: レートリミット（リトライ可能）
- * - 408: タイムアウト（リトライ可能）
- * - ネットワークエラー（リトライ可能）
- */
-function isRetryableError(error: unknown): boolean {
-  if (error instanceof Error) {
-    // ネットワークエラー
-    if (error.message.includes("fetch") ||
-        error.message.includes("network") ||
-        error.message.includes("timeout") ||
-        error.message.includes("ECONNRESET") ||
-        error.message.includes("ETIMEDOUT")) {
-      return true;
-    }
-  }
-  return true;  // デフォルトでリトライ
-}
-
-/**
- * HTTPレスポンスがリトライ可能かどうかを判定
- */
-function isRetryableStatus(status: number): boolean {
-  return status >= 500 || status === 429 || status === 408;
-}
 
 /**
  * セキュリティ: ユーザー入力/DB値をプロンプトに含める前にサニタイズ
