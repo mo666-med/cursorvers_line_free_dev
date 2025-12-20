@@ -28,49 +28,95 @@ jobs:
         with:
           version: latest
 
-      - name: Setup log directory
+      - name: Setup log directory and tracking
         run: |
           mkdir -p deploy-logs
           echo "DEPLOY_LOG=deploy-logs/deploy-$(date -u +%Y%m%d_%H%M%S).log" >> $GITHUB_ENV
+          # デプロイ結果追跡用
+          echo "DEPLOY_SUCCESS=0" >> $GITHUB_ENV
+          echo "DEPLOY_FAILED=0" >> $GITHUB_ENV
+          echo "FAILED_FUNCTIONS=" >> $GITHUB_ENV
 
       # ========================================
       # Core Functions (JWT検証あり)
       # ========================================
       - name: Deploy line-webhook
+        id: deploy_line_webhook
         run: |
           echo "=== Deploy line-webhook ===" | tee -a "$DEPLOY_LOG"
-          supabase functions deploy line-webhook --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"
-        continue-on-error: true
+          if supabase functions deploy line-webhook --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"; then
+            echo "DEPLOY_SUCCESS=$((DEPLOY_SUCCESS + 1))" >> $GITHUB_ENV
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            echo "DEPLOY_FAILED=$((DEPLOY_FAILED + 1))" >> $GITHUB_ENV
+            echo "FAILED_FUNCTIONS=${FAILED_FUNCTIONS}line-webhook," >> $GITHUB_ENV
+            echo "result=failed" >> $GITHUB_OUTPUT
+          fi
 
       - name: Deploy line-daily-brief
+        id: deploy_line_daily_brief
         run: |
           echo "=== Deploy line-daily-brief ===" | tee -a "$DEPLOY_LOG"
-          supabase functions deploy line-daily-brief --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"
-        continue-on-error: true
+          if supabase functions deploy line-daily-brief --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"; then
+            echo "DEPLOY_SUCCESS=$((DEPLOY_SUCCESS + 1))" >> $GITHUB_ENV
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            echo "DEPLOY_FAILED=$((DEPLOY_FAILED + 1))" >> $GITHUB_ENV
+            echo "FAILED_FUNCTIONS=${FAILED_FUNCTIONS}line-daily-brief," >> $GITHUB_ENV
+            echo "result=failed" >> $GITHUB_OUTPUT
+          fi
 
       - name: Deploy stats-exporter
+        id: deploy_stats_exporter
         run: |
           echo "=== Deploy stats-exporter ===" | tee -a "$DEPLOY_LOG"
-          supabase functions deploy stats-exporter --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"
-        continue-on-error: true
+          if supabase functions deploy stats-exporter --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"; then
+            echo "DEPLOY_SUCCESS=$((DEPLOY_SUCCESS + 1))" >> $GITHUB_ENV
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            echo "DEPLOY_FAILED=$((DEPLOY_FAILED + 1))" >> $GITHUB_ENV
+            echo "FAILED_FUNCTIONS=${FAILED_FUNCTIONS}stats-exporter," >> $GITHUB_ENV
+            echo "result=failed" >> $GITHUB_OUTPUT
+          fi
 
       - name: Deploy health-check
+        id: deploy_health_check
         run: |
           echo "=== Deploy health-check ===" | tee -a "$DEPLOY_LOG"
-          supabase functions deploy health-check --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"
-        continue-on-error: true
+          if supabase functions deploy health-check --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"; then
+            echo "DEPLOY_SUCCESS=$((DEPLOY_SUCCESS + 1))" >> $GITHUB_ENV
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            echo "DEPLOY_FAILED=$((DEPLOY_FAILED + 1))" >> $GITHUB_ENV
+            echo "FAILED_FUNCTIONS=${FAILED_FUNCTIONS}health-check," >> $GITHUB_ENV
+            echo "result=failed" >> $GITHUB_OUTPUT
+          fi
 
       - name: Deploy manus-audit-line-daily-brief
+        id: deploy_manus_audit
         run: |
           echo "=== Deploy manus-audit-line-daily-brief ===" | tee -a "$DEPLOY_LOG"
-          supabase functions deploy manus-audit-line-daily-brief --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"
-        continue-on-error: true
+          if supabase functions deploy manus-audit-line-daily-brief --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"; then
+            echo "DEPLOY_SUCCESS=$((DEPLOY_SUCCESS + 1))" >> $GITHUB_ENV
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            echo "DEPLOY_FAILED=$((DEPLOY_FAILED + 1))" >> $GITHUB_ENV
+            echo "FAILED_FUNCTIONS=${FAILED_FUNCTIONS}manus-audit-line-daily-brief," >> $GITHUB_ENV
+            echo "result=failed" >> $GITHUB_OUTPUT
+          fi
 
       - name: Deploy relay
+        id: deploy_relay
         run: |
           echo "=== Deploy relay ===" | tee -a "$DEPLOY_LOG"
-          supabase functions deploy relay --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"
-        continue-on-error: true
+          if supabase functions deploy relay --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"; then
+            echo "DEPLOY_SUCCESS=$((DEPLOY_SUCCESS + 1))" >> $GITHUB_ENV
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            echo "DEPLOY_FAILED=$((DEPLOY_FAILED + 1))" >> $GITHUB_ENV
+            echo "FAILED_FUNCTIONS=${FAILED_FUNCTIONS}relay," >> $GITHUB_ENV
+            echo "result=failed" >> $GITHUB_OUTPUT
+          fi
 
       # ========================================
       # Webhook Functions (JWT検証なし)
@@ -84,61 +130,157 @@ jobs:
       #   - generate-sec-brief: API Key認証
       # ========================================
       - name: Deploy stripe-webhook
+        id: deploy_stripe_webhook
         run: |
           echo "=== Deploy stripe-webhook (no-verify-jwt) ===" | tee -a "$DEPLOY_LOG"
-          supabase functions deploy stripe-webhook --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"
-        continue-on-error: true
+          if supabase functions deploy stripe-webhook --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"; then
+            echo "DEPLOY_SUCCESS=$((DEPLOY_SUCCESS + 1))" >> $GITHUB_ENV
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            echo "DEPLOY_FAILED=$((DEPLOY_FAILED + 1))" >> $GITHUB_ENV
+            echo "FAILED_FUNCTIONS=${FAILED_FUNCTIONS}stripe-webhook," >> $GITHUB_ENV
+            echo "result=failed" >> $GITHUB_OUTPUT
+          fi
 
       - name: Deploy create-checkout-session
+        id: deploy_checkout
         run: |
           echo "=== Deploy create-checkout-session (no-verify-jwt) ===" | tee -a "$DEPLOY_LOG"
-          supabase functions deploy create-checkout-session --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"
-        continue-on-error: true
+          if supabase functions deploy create-checkout-session --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"; then
+            echo "DEPLOY_SUCCESS=$((DEPLOY_SUCCESS + 1))" >> $GITHUB_ENV
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            echo "DEPLOY_FAILED=$((DEPLOY_FAILED + 1))" >> $GITHUB_ENV
+            echo "FAILED_FUNCTIONS=${FAILED_FUNCTIONS}create-checkout-session," >> $GITHUB_ENV
+            echo "result=failed" >> $GITHUB_OUTPUT
+          fi
 
       - name: Deploy ingest-hij
+        id: deploy_ingest_hij
         run: |
           echo "=== Deploy ingest-hij (no-verify-jwt) ===" | tee -a "$DEPLOY_LOG"
-          supabase functions deploy ingest-hij --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"
-        continue-on-error: true
+          if supabase functions deploy ingest-hij --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"; then
+            echo "DEPLOY_SUCCESS=$((DEPLOY_SUCCESS + 1))" >> $GITHUB_ENV
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            echo "DEPLOY_FAILED=$((DEPLOY_FAILED + 1))" >> $GITHUB_ENV
+            echo "FAILED_FUNCTIONS=${FAILED_FUNCTIONS}ingest-hij," >> $GITHUB_ENV
+            echo "result=failed" >> $GITHUB_OUTPUT
+          fi
 
       - name: Deploy generate-sec-brief
+        id: deploy_sec_brief
         run: |
           echo "=== Deploy generate-sec-brief (no-verify-jwt) ===" | tee -a "$DEPLOY_LOG"
-          supabase functions deploy generate-sec-brief --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"
-        continue-on-error: true
+          if supabase functions deploy generate-sec-brief --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"; then
+            echo "DEPLOY_SUCCESS=$((DEPLOY_SUCCESS + 1))" >> $GITHUB_ENV
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            echo "DEPLOY_FAILED=$((DEPLOY_FAILED + 1))" >> $GITHUB_ENV
+            echo "FAILED_FUNCTIONS=${FAILED_FUNCTIONS}generate-sec-brief," >> $GITHUB_ENV
+            echo "result=failed" >> $GITHUB_OUTPUT
+          fi
 
       - name: Deploy line-register
+        id: deploy_line_register
         run: |
           echo "=== Deploy line-register (no-verify-jwt) ===" | tee -a "$DEPLOY_LOG"
-          supabase functions deploy line-register --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"
-        continue-on-error: true
+          if supabase functions deploy line-register --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"; then
+            echo "DEPLOY_SUCCESS=$((DEPLOY_SUCCESS + 1))" >> $GITHUB_ENV
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            echo "DEPLOY_FAILED=$((DEPLOY_FAILED + 1))" >> $GITHUB_ENV
+            echo "FAILED_FUNCTIONS=${FAILED_FUNCTIONS}line-register," >> $GITHUB_ENV
+            echo "result=failed" >> $GITHUB_OUTPUT
+          fi
 
       - name: Deploy discord-bot
+        id: deploy_discord_bot
         run: |
           echo "=== Deploy discord-bot (no-verify-jwt) ===" | tee -a "$DEPLOY_LOG"
-          supabase functions deploy discord-bot --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"
-        continue-on-error: true
+          if supabase functions deploy discord-bot --no-verify-jwt --project-ref "$SUPABASE_PROJECT_ID" 2>&1 | tee -a "$DEPLOY_LOG"; then
+            echo "DEPLOY_SUCCESS=$((DEPLOY_SUCCESS + 1))" >> $GITHUB_ENV
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            echo "DEPLOY_FAILED=$((DEPLOY_FAILED + 1))" >> $GITHUB_ENV
+            echo "FAILED_FUNCTIONS=${FAILED_FUNCTIONS}discord-bot," >> $GITHUB_ENV
+            echo "result=failed" >> $GITHUB_OUTPUT
+          fi
 
       # ========================================
-      # Notification
+      # Summary and Notification
       # ========================================
+      - name: Generate deployment summary
+        id: summary
+        if: always()
+        run: |
+          # 環境変数を再読み込み（GitHub Actionsの制限回避）
+          SUCCESS_COUNT=0
+          FAILED_COUNT=0
+          FAILED_LIST=""
+
+          # 各ステップの結果を集計
+          [ "${{ steps.deploy_line_webhook.outputs.result }}" = "success" ] && SUCCESS_COUNT=$((SUCCESS_COUNT + 1)) || { FAILED_COUNT=$((FAILED_COUNT + 1)); FAILED_LIST="${FAILED_LIST}line-webhook, "; }
+          [ "${{ steps.deploy_line_daily_brief.outputs.result }}" = "success" ] && SUCCESS_COUNT=$((SUCCESS_COUNT + 1)) || { FAILED_COUNT=$((FAILED_COUNT + 1)); FAILED_LIST="${FAILED_LIST}line-daily-brief, "; }
+          [ "${{ steps.deploy_stats_exporter.outputs.result }}" = "success" ] && SUCCESS_COUNT=$((SUCCESS_COUNT + 1)) || { FAILED_COUNT=$((FAILED_COUNT + 1)); FAILED_LIST="${FAILED_LIST}stats-exporter, "; }
+          [ "${{ steps.deploy_health_check.outputs.result }}" = "success" ] && SUCCESS_COUNT=$((SUCCESS_COUNT + 1)) || { FAILED_COUNT=$((FAILED_COUNT + 1)); FAILED_LIST="${FAILED_LIST}health-check, "; }
+          [ "${{ steps.deploy_manus_audit.outputs.result }}" = "success" ] && SUCCESS_COUNT=$((SUCCESS_COUNT + 1)) || { FAILED_COUNT=$((FAILED_COUNT + 1)); FAILED_LIST="${FAILED_LIST}manus-audit, "; }
+          [ "${{ steps.deploy_relay.outputs.result }}" = "success" ] && SUCCESS_COUNT=$((SUCCESS_COUNT + 1)) || { FAILED_COUNT=$((FAILED_COUNT + 1)); FAILED_LIST="${FAILED_LIST}relay, "; }
+          [ "${{ steps.deploy_stripe_webhook.outputs.result }}" = "success" ] && SUCCESS_COUNT=$((SUCCESS_COUNT + 1)) || { FAILED_COUNT=$((FAILED_COUNT + 1)); FAILED_LIST="${FAILED_LIST}stripe-webhook, "; }
+          [ "${{ steps.deploy_checkout.outputs.result }}" = "success" ] && SUCCESS_COUNT=$((SUCCESS_COUNT + 1)) || { FAILED_COUNT=$((FAILED_COUNT + 1)); FAILED_LIST="${FAILED_LIST}checkout, "; }
+          [ "${{ steps.deploy_ingest_hij.outputs.result }}" = "success" ] && SUCCESS_COUNT=$((SUCCESS_COUNT + 1)) || { FAILED_COUNT=$((FAILED_COUNT + 1)); FAILED_LIST="${FAILED_LIST}ingest-hij, "; }
+          [ "${{ steps.deploy_sec_brief.outputs.result }}" = "success" ] && SUCCESS_COUNT=$((SUCCESS_COUNT + 1)) || { FAILED_COUNT=$((FAILED_COUNT + 1)); FAILED_LIST="${FAILED_LIST}sec-brief, "; }
+          [ "${{ steps.deploy_line_register.outputs.result }}" = "success" ] && SUCCESS_COUNT=$((SUCCESS_COUNT + 1)) || { FAILED_COUNT=$((FAILED_COUNT + 1)); FAILED_LIST="${FAILED_LIST}line-register, "; }
+          [ "${{ steps.deploy_discord_bot.outputs.result }}" = "success" ] && SUCCESS_COUNT=$((SUCCESS_COUNT + 1)) || { FAILED_COUNT=$((FAILED_COUNT + 1)); FAILED_LIST="${FAILED_LIST}discord-bot, "; }
+
+          # 末尾のカンマとスペースを削除
+          FAILED_LIST="${FAILED_LIST%, }"
+
+          echo "success_count=${SUCCESS_COUNT}" >> $GITHUB_OUTPUT
+          echo "failed_count=${FAILED_COUNT}" >> $GITHUB_OUTPUT
+          echo "failed_list=${FAILED_LIST}" >> $GITHUB_OUTPUT
+
+          # サマリーをログに出力
+          echo "=========================================="
+          echo "デプロイ結果サマリー"
+          echo "=========================================="
+          echo "成功: ${SUCCESS_COUNT}/12"
+          echo "失敗: ${FAILED_COUNT}/12"
+          if [ -n "$FAILED_LIST" ]; then
+            echo "失敗した関数: ${FAILED_LIST}"
+          fi
+          echo "=========================================="
+
       - name: Send Discord notification
         if: always()
         run: |
-          STATUS="${{ job.status }}"
           TIMESTAMP=$(TZ=Asia/Tokyo date '+%Y-%m-%d %H:%M:%S JST')
+          SUCCESS_COUNT="${{ steps.summary.outputs.success_count }}"
+          FAILED_COUNT="${{ steps.summary.outputs.failed_count }}"
+          FAILED_LIST="${{ steps.summary.outputs.failed_list }}"
 
-          if [ "$STATUS" = "success" ]; then
+          if [ "$FAILED_COUNT" = "0" ]; then
             EMOJI="✅"
             COLOR="5763719"
+            TITLE="Edge Functions Deploy 成功"
+            DESC="全12関数のデプロイが正常に完了しました"
           else
-            EMOJI="⚠️"
-            COLOR="16776960"
+            EMOJI="❌"
+            COLOR="15158332"
+            TITLE="Edge Functions Deploy 失敗"
+            DESC="一部の関数でデプロイに失敗しました"
+          fi
+
+          # 失敗した関数がある場合、fieldsに追加
+          if [ -n "$FAILED_LIST" ]; then
+            FIELDS="[{\"name\": \"成功\", \"value\": \"${SUCCESS_COUNT}/12\", \"inline\": true}, {\"name\": \"失敗\", \"value\": \"${FAILED_COUNT}/12\", \"inline\": true}, {\"name\": \"失敗した関数\", \"value\": \"${FAILED_LIST}\", \"inline\": false}, {\"name\": \"Commit\", \"value\": \"${GITHUB_SHA:0:7}\", \"inline\": true}, {\"name\": \"Time\", \"value\": \"${TIMESTAMP}\", \"inline\": true}]"
+          else
+            FIELDS="[{\"name\": \"成功\", \"value\": \"${SUCCESS_COUNT}/12\", \"inline\": true}, {\"name\": \"Commit\", \"value\": \"${GITHUB_SHA:0:7}\", \"inline\": true}, {\"name\": \"Time\", \"value\": \"${TIMESTAMP}\", \"inline\": true}]"
           fi
 
           curl -X POST "$DISCORD_SYSTEM_WEBHOOK" \
             -H "Content-Type: application/json" \
-            -d "{\"embeds\": [{\"title\": \"${EMOJI} Edge Functions Deploy ${STATUS}\", \"description\": \"全12関数のデプロイを実行\", \"color\": ${COLOR}, \"fields\": [{\"name\": \"Commit\", \"value\": \"${GITHUB_SHA:0:7}\", \"inline\": true}, {\"name\": \"Time\", \"value\": \"${TIMESTAMP}\", \"inline\": true}], \"url\": \"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}]}"
+            -d "{\"embeds\": [{\"title\": \"${EMOJI} ${TITLE}\", \"description\": \"${DESC}\", \"color\": ${COLOR}, \"fields\": ${FIELDS}, \"url\": \"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}]}"
 
       # ========================================
       # Log Artifact
@@ -150,3 +292,17 @@ jobs:
           name: deploy-logs-${{ github.run_number }}-${{ github.run_attempt }}
           path: deploy-logs/
           retention-days: 90
+
+      # ========================================
+      # Fail workflow if any deployment failed
+      # ========================================
+      - name: Check deployment status
+        if: always()
+        run: |
+          FAILED_COUNT="${{ steps.summary.outputs.failed_count }}"
+          if [ "$FAILED_COUNT" != "0" ]; then
+            echo "❌ ${FAILED_COUNT}個の関数でデプロイに失敗しました"
+            echo "失敗した関数: ${{ steps.summary.outputs.failed_list }}"
+            exit 1
+          fi
+          echo "✅ 全関数のデプロイが成功しました"
