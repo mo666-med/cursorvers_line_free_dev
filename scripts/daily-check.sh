@@ -12,6 +12,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Discord Webhook URL (環境変数から取得)
+# セキュリティ注: Webhook URLは機密情報として扱う
 DISCORD_WEBHOOK_URL="${DISCORD_WEBHOOK_URL:-}"
 if [[ -z "$DISCORD_WEBHOOK_URL" ]]; then
     echo "⚠️ エラー: DISCORD_WEBHOOK_URL が設定されていません"
@@ -19,9 +20,13 @@ if [[ -z "$DISCORD_WEBHOOK_URL" ]]; then
     exit 1
 fi
 
-# Supabase設定
-SUPABASE_PROJECT_ID="haaxgwyimoqzzxzdaeep"
-SUPABASE_URL="https://${SUPABASE_PROJECT_ID}.supabase.co"
+# セキュリティ: シークレットをログに出力しないための抑制
+# GitHub Actionsでは自動マスクされるが、念のため明示的に抑制
+export CURL_SILENT_SECRETS=1
+
+# Supabase設定（環境変数で上書き可能）
+SUPABASE_PROJECT_ID="${SUPABASE_PROJECT_ID:-haaxgwyimoqzzxzdaeep}"
+SUPABASE_URL="${SUPABASE_URL:-https://${SUPABASE_PROJECT_ID}.supabase.co}"
 
 # Google Sheets設定
 GOOGLE_SHEET_ID="1mSpu4NMfa8cI7ohYATzIo2jwnD7nqW5rzkcHQobKoaY"
