@@ -1,13 +1,24 @@
 /**
  * Stripe Webhook Edge Function
  * Stripe決済イベントを処理し、会員情報を更新
+ *
+ * 認証コード方式:
+ * 1. 決済完了時に認証コードを生成・保存
+ * 2. メールで認証コードとLINE登録案内を送信
+ * 3. LINE登録後にコード入力でDiscord招待を送信
+ * 4. 既にLINE紐付け済みの場合は即座にDiscord招待
  */
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
 import { notifyDiscord } from "../_shared/alert.ts";
+import { sendPaidMemberWelcomeEmail } from "../_shared/email.ts";
 import { createSheetsClientFromEnv } from "../_shared/google-sheets.ts";
 import { createLogger } from "../_shared/logger.ts";
 import { pushLineMessage } from "../_shared/line-messaging.ts";
+import {
+  generateVerificationCode,
+  getCodeExpiryDate,
+} from "../_shared/verification-code.ts";
 import { determineMembershipTier, determineStatus } from "./tier-utils.ts";
 
 const log = createLogger("stripe-webhook");
@@ -23,6 +34,93 @@ const stripe = new Stripe(Deno.env.get("STRIPE_API_KEY") as string, {
 });
 
 const cryptoProvider = Stripe.createSubtleCryptoProvider();
+
+// 孤児レコードの型定義
+interface OrphanRecord {
+  id: string;
+  email?: string | null;
+  line_user_id?: string | null;
+  tier?: string | null;
+}
+
+/**
+ * 孤児レコード（LINE IDのみで登録された無料会員）を有料会員にマージ
+ * - 同一line_user_idで別のレコードが存在する場合、line_user_idを新レコードに移行し旧レコードを削除
+ */
+async function mergeOrphanLineRecord(
+  // deno-lint-ignore no-explicit-any
+  supabase: ReturnType<typeof createClient<any>>,
+  paidEmail: string,
+  paidMemberId: string,
+): Promise<{ merged: boolean; orphanLineUserId?: string }> {
+  // まず新しい有料レコードにline_user_idがあるか確認
+  const { data: paidMember } = await supabase
+    .from("members")
+    .select("line_user_id")
+    .eq("id", paidMemberId)
+    .maybeSingle();
+
+  const paidMemberData = paidMember as { line_user_id?: string | null } | null;
+
+  if (paidMemberData?.line_user_id) {
+    // すでにline_user_idがあれば、そのline_user_idで別の孤児レコードを探す
+    const { data: orphans } = await supabase
+      .from("members")
+      .select("id, email, line_user_id")
+      .eq("line_user_id", paidMemberData.line_user_id)
+      .neq("id", paidMemberId);
+
+    const orphanList = orphans as OrphanRecord[] | null;
+
+    if (orphanList && orphanList.length > 0) {
+      // 孤児レコードを削除
+      for (const orphan of orphanList) {
+        await supabase.from("members").delete().eq("id", orphan.id);
+        log.info("Deleted orphan record (same line_user_id)", {
+          orphanId: orphan.id,
+          orphanEmail: orphan.email?.slice(0, 5) + "***",
+          lineUserId: orphan.line_user_id?.slice(-4),
+        });
+      }
+      return { merged: true, orphanLineUserId: paidMemberData.line_user_id };
+    }
+  }
+
+  // 有料レコードにline_user_idがない場合、emailがnullの孤児レコードを探す
+  // (LINE IDのみで登録された無料会員)
+  const { data: emailNullOrphans } = await supabase
+    .from("members")
+    .select("id, line_user_id, tier")
+    .is("email", null)
+    .not("line_user_id", "is", null);
+
+  const emailNullOrphanList = emailNullOrphans as OrphanRecord[] | null;
+
+  if (emailNullOrphanList && emailNullOrphanList.length > 0) {
+    // 最初の孤児レコードのline_user_idを有料レコードに移行
+    const orphan = emailNullOrphanList[0];
+    if (orphan.line_user_id) {
+      // 有料レコードにline_user_idを設定
+      await supabase
+        .from("members")
+        .update({ line_user_id: orphan.line_user_id })
+        .eq("id", paidMemberId);
+
+      // 孤児レコードを削除
+      await supabase.from("members").delete().eq("id", orphan.id);
+
+      log.info("Merged orphan LINE record into paid member", {
+        paidEmail: paidEmail.slice(0, 5) + "***",
+        orphanId: orphan.id,
+        lineUserId: orphan.line_user_id.slice(-4),
+      });
+
+      return { merged: true, orphanLineUserId: orphan.line_user_id };
+    }
+  }
+
+  return { merged: false };
+}
 
 // Google Sheets連携関数
 async function appendMemberRow(row: unknown[]) {
@@ -239,6 +337,10 @@ Deno.serve(async (req) => {
           paymentLinkId,
         );
 
+        // 認証コード生成（LINE未登録時用）
+        const verificationCode = generateVerificationCode();
+        const verificationExpiresAt = getCodeExpiryDate().toISOString();
+
         const { error } = await supabase
           .from("members")
           .upsert(
@@ -252,6 +354,9 @@ Deno.serve(async (req) => {
               tier: membershipTier,
               period_end: nextBillingAt,
               opt_in_email: optInEmail,
+              verification_code: verificationCode,
+              verification_expires_at: verificationExpiresAt,
+              discord_invite_sent: false,
               updated_at: new Date().toISOString(),
             },
             { onConflict: "email" },
@@ -274,15 +379,29 @@ Deno.serve(async (req) => {
             tier: membershipTier,
           });
 
-          // LINE user ID を取得（既存ユーザーの場合）
-          let lineUserId: string | null = null;
+          // upsert後のレコードを取得
           const { data: memberData } = await supabase
             .from("members")
-            .select("line_user_id")
+            .select("id, line_user_id")
             .eq("email", customerEmail)
             .maybeSingle();
-          if (memberData?.line_user_id) {
-            lineUserId = memberData.line_user_id;
+
+          let lineUserId: string | null = memberData?.line_user_id ?? null;
+
+          // 孤児レコード（LINE IDのみで登録）をマージ
+          if (memberData?.id) {
+            const mergeResult = await mergeOrphanLineRecord(
+              supabase,
+              customerEmail,
+              memberData.id,
+            );
+            if (mergeResult.merged && mergeResult.orphanLineUserId) {
+              lineUserId = mergeResult.orphanLineUserId;
+              log.info("Orphan LINE record merged", {
+                email: customerEmail.slice(0, 5) + "***",
+                lineUserId: lineUserId?.slice(-4),
+              });
+            }
           }
 
           // Google Sheets へ追記（設定されている場合のみ）
@@ -297,13 +416,72 @@ Deno.serve(async (req) => {
             new Date().toISOString(),
           ]);
 
-          // Discord招待リンクをLINE経由で送信
-          await sendDiscordInviteViaLine(
-            customerEmail,
-            customerName,
-            membershipTier,
-            lineUserId,
-          );
+          // discord_invite_sent 状況を確認
+          const { data: currentMember } = await supabase
+            .from("members")
+            .select("discord_invite_sent")
+            .eq("email", customerEmail)
+            .maybeSingle();
+
+          const alreadySentDiscordInvite = currentMember?.discord_invite_sent === true;
+
+          // LINE紐付け状況に応じて処理を分岐
+          if (lineUserId && !alreadySentDiscordInvite) {
+            // 既にLINE紐付け済み かつ Discord招待未送信 → 即座にDiscord招待を送信
+            log.info("LINE already linked, sending Discord invite immediately", {
+              email: customerEmail.slice(0, 5) + "***",
+              lineUserId: lineUserId.slice(-4),
+            });
+            await sendDiscordInviteViaLine(
+              customerEmail,
+              customerName,
+              membershipTier,
+              lineUserId,
+            );
+
+            // 認証コードをクリア（不要になったため）
+            await supabase
+              .from("members")
+              .update({
+                verification_code: null,
+                verification_expires_at: null,
+                discord_invite_sent: true,
+              })
+              .eq("email", customerEmail);
+          } else if (lineUserId && alreadySentDiscordInvite) {
+            // LINE紐付け済み かつ Discord招待送信済み → スキップ
+            log.info("Discord invite already sent, skipping", {
+              email: customerEmail.slice(0, 5) + "***",
+            });
+          } else {
+            // LINE未登録 → 認証コード付きウェルカムメールを送信
+            const tierDisplayName = membershipTier === "master"
+              ? "Master Class"
+              : "Library Member";
+
+            log.info("LINE not linked, sending welcome email with code", {
+              email: customerEmail.slice(0, 5) + "***",
+              code: verificationCode.slice(0, 2) + "****",
+            });
+
+            const emailResult = await sendPaidMemberWelcomeEmail(
+              customerEmail,
+              verificationCode,
+              tierDisplayName,
+            );
+
+            if (!emailResult.success) {
+              log.error("Failed to send welcome email", {
+                email: customerEmail.slice(0, 5) + "***",
+                error: emailResult.error,
+              });
+              await notifyDiscord({
+                title: "MANUS ALERT: Welcome email failed",
+                message: `Failed to send welcome email to ${customerEmail.slice(0, 5)}***`,
+                context: { tier: membershipTier, error: emailResult.error },
+              });
+            }
+          }
         }
       } else {
         log.info("Payment not completed", {

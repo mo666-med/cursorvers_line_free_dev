@@ -1,9 +1,19 @@
 /**
  * LINE公式アカウント用 Webhook エントリポイント（Pocket Defense Tool）
  * 主要ロジックは lib/ 以下に分割
+ *
+ * 認証コード方式:
+ * - 有料会員決済時にメールで認証コードを送信
+ * - ユーザーがLINEで認証コードを入力
+ * - コード検証成功でDiscord招待を送信
  */
 import { createClient } from "@supabase/supabase-js";
 import { anonymizeUserId, createLogger } from "../_shared/logger.ts";
+import {
+  isCodeExpired,
+  isVerificationCodeFormat,
+  normalizeCode,
+} from "../_shared/verification-code.ts";
 
 const log = createLogger("line-webhook");
 
@@ -360,6 +370,223 @@ async function handleEmailRegistration(
   }
 }
 
+// 認証コード検証ハンドラー（有料会員のLINE紐付け）
+async function handleVerificationCode(
+  code: string,
+  lineUserId: string,
+  replyToken?: string,
+): Promise<void> {
+  try {
+    // 認証コードで会員を検索
+    const { data: member, error: fetchError } = await supabase
+      .from("members")
+      .select("id, email, tier, verification_code, verification_expires_at, line_user_id")
+      .eq("verification_code", code)
+      .maybeSingle();
+
+    if (fetchError) {
+      log.error("Verification code lookup error", {
+        errorMessage: fetchError.message,
+      });
+      if (replyToken) {
+        await replyText(
+          replyToken,
+          "エラーが発生しました。もう一度お試しください。",
+        );
+      }
+      return;
+    }
+
+    if (!member) {
+      log.info("Invalid verification code", {
+        code: code.slice(0, 2) + "****",
+        userId: anonymizeUserId(lineUserId),
+      });
+      if (replyToken) {
+        await replyText(
+          replyToken,
+          [
+            "❌ 認証コードが見つかりません",
+            "",
+            "以下をご確認ください：",
+            "・コードが正しく入力されていますか？",
+            "・有効期限（14日）が過ぎていませんか？",
+            "",
+            "問題が解決しない場合は、",
+            "決済時のメールアドレスと共にお問い合わせください。",
+          ].join("\n"),
+        );
+      }
+      return;
+    }
+
+    // 有効期限チェック
+    if (member.verification_expires_at && isCodeExpired(member.verification_expires_at)) {
+      log.info("Verification code expired", {
+        code: code.slice(0, 2) + "****",
+        email: member.email?.slice(0, 5) + "***",
+      });
+      if (replyToken) {
+        await replyText(
+          replyToken,
+          [
+            "⏰ 認証コードの有効期限が切れています",
+            "",
+            "決済から14日以上経過しました。",
+            "お手数ですが、サポートまでお問い合わせください。",
+            "",
+            CONTACT_FORM_URL,
+          ].join("\n"),
+        );
+      }
+      return;
+    }
+
+    // 既にLINE紐付け済みの場合
+    if (member.line_user_id) {
+      if (member.line_user_id === lineUserId) {
+        if (replyToken) {
+          await replyText(
+            replyToken,
+            [
+              "✅ すでに認証済みです",
+              "",
+              "Discord コミュニティへの参加がまだの場合：",
+              DISCORD_INVITE_URL,
+            ].join("\n"),
+          );
+        }
+      } else {
+        log.warn("Verification code already used by different LINE user", {
+          code: code.slice(0, 2) + "****",
+          existingLineUser: member.line_user_id.slice(-4),
+          newLineUser: lineUserId.slice(-4),
+        });
+        if (replyToken) {
+          await replyText(
+            replyToken,
+            [
+              "❌ このコードは既に別のアカウントで使用されています",
+              "",
+              "1人1アカウントでのご利用をお願いしています。",
+              "お心当たりがない場合は、サポートまでお問い合わせください。",
+            ].join("\n"),
+          );
+        }
+      }
+      return;
+    }
+
+    // LINE紐付けを実行
+    const { error: updateError } = await supabase
+      .from("members")
+      .update({
+        line_user_id: lineUserId,
+        verification_code: null,
+        verification_expires_at: null,
+        discord_invite_sent: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", member.id);
+
+    if (updateError) {
+      log.error("Failed to link LINE user", {
+        memberId: member.id,
+        errorMessage: updateError.message,
+      });
+      if (replyToken) {
+        await replyText(
+          replyToken,
+          "エラーが発生しました。もう一度お試しください。",
+        );
+      }
+      return;
+    }
+
+    log.info("Verification successful, LINE linked", {
+      email: member.email?.slice(0, 5) + "***",
+      lineUserId: lineUserId.slice(-4),
+      tier: member.tier,
+    });
+
+    // Discord招待を生成して送信
+    const discordBotToken = Deno.env.get("DISCORD_BOT_TOKEN");
+    const guildId = Deno.env.get("DISCORD_GUILD_ID");
+
+    let discordInviteUrl = DISCORD_INVITE_URL; // フォールバック用
+
+    if (discordBotToken && guildId) {
+      try {
+        const inviteResponse = await fetch(
+          `https://discord.com/api/v10/guilds/${guildId}/invites`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bot ${discordBotToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              max_age: 1209600, // 2週間
+              max_uses: 1,
+              unique: true,
+            }),
+          },
+        );
+
+        if (inviteResponse.ok) {
+          const invite = await inviteResponse.json();
+          discordInviteUrl = `https://discord.gg/${invite.code}`;
+          log.info("Discord invite created for verification", {
+            email: member.email?.slice(0, 5) + "***",
+          });
+        } else {
+          log.warn("Failed to create Discord invite, using fallback", {
+            status: inviteResponse.status,
+          });
+        }
+      } catch (err) {
+        log.error("Discord invite creation error", {
+          errorMessage: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // 認証完了メッセージを送信
+    const tierDisplayName = member.tier === "master"
+      ? "Master Class"
+      : "Library Member";
+
+    if (replyToken) {
+      await replyText(
+        replyToken,
+        [
+          "🎉 認証完了！",
+          "",
+          `【${tierDisplayName}】へようこそ！`,
+          "",
+          "━━━━━━━━━━━━━━━",
+          "📚 Discord コミュニティ",
+          "━━━━━━━━━━━━━━━",
+          "",
+          "▼ 以下のリンクから参加してください",
+          discordInviteUrl,
+          "",
+          "※ このリンクは2週間有効・1回限りです",
+          "",
+          "参加後、サーバー内で",
+          `/join email:${member.email}`,
+          "を実行してロールを取得してください。",
+        ].join("\n"),
+      );
+    }
+  } catch (err) {
+    log.error("Verification code handling error", {
+      errorMessage: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
+}
+
 // Prompt Polisher ハンドラー（プレフィックスありでもなしでも動作）
 async function handlePromptPolisher(
   rawInput: string,
@@ -537,30 +764,71 @@ async function handleEvent(event: LineEvent): Promise<void> {
     // ========================================
     if (event.type === "follow") {
       log.info("Follow event", { userId: anonymizeUserId(lineUserId) });
+
+      // 有料決済済み（認証コード保留中）かどうかを確認
+      const { data: pendingPaidMember } = await supabase
+        .from("members")
+        .select("email, tier, verification_code")
+        .not("verification_code", "is", null)
+        .in("tier", ["library", "master"])
+        .is("line_user_id", null)
+        .limit(1);
+
+      // 有料会員で認証コード保留中の場合は、コード入力を促すメッセージ
+      // 注: 厳密には誰の決済かは特定できないが、UXとして案内
+      const hasPendingPaidMembers = pendingPaidMember && pendingPaidMember.length > 0;
+
       if (replyToken) {
-        await replyText(
-          replyToken,
-          [
-            "🎉 友だち追加ありがとうございます！",
-            "",
-            "━━━━━━━━━━━━━━━",
-            "🎁 無料特典（メール登録で即GET）",
-            "━━━━━━━━━━━━━━━",
-            "",
-            "📚 Discordコミュニティ参加",
-            "🤖 注目のAI記事要約（毎日更新）",
-            "🛡️ 医療向けセキュリティレポート",
-            "💬 Q&A・相談チャンネル",
-            "⚡ 開発効率化Tips",
-            "📎 資料・リンク集",
-            "",
-            "━━━━━━━━━━━━━━━",
-            "",
-            "▼ メールアドレスを入力して特典GET",
-            "📱 左下のキーボードアイコンをタップ",
-            "例: your@email.com",
-          ].join("\n"),
-        );
+        if (hasPendingPaidMembers) {
+          // 有料会員向けメッセージ
+          await replyText(
+            replyToken,
+            [
+              "🎉 友だち追加ありがとうございます！",
+              "",
+              "━━━━━━━━━━━━━━━",
+              "💎 有料会員の方",
+              "━━━━━━━━━━━━━━━",
+              "",
+              "決済完了メールに記載された",
+              "【6桁の認証コード】を入力してください",
+              "",
+              "例: ABC123",
+              "",
+              "━━━━━━━━━━━━━━━",
+              "🎁 無料特典の方",
+              "━━━━━━━━━━━━━━━",
+              "",
+              "メールアドレスを入力してください",
+              "例: your@email.com",
+            ].join("\n"),
+          );
+        } else {
+          // 通常の無料会員向けメッセージ
+          await replyText(
+            replyToken,
+            [
+              "🎉 友だち追加ありがとうございます！",
+              "",
+              "━━━━━━━━━━━━━━━",
+              "🎁 無料特典（メール登録で即GET）",
+              "━━━━━━━━━━━━━━━",
+              "",
+              "📚 Discordコミュニティ参加",
+              "🤖 注目のAI記事要約（毎日更新）",
+              "🛡️ 医療向けセキュリティレポート",
+              "💬 Q&A・相談チャンネル",
+              "⚡ 開発効率化Tips",
+              "📎 資料・リンク集",
+              "",
+              "━━━━━━━━━━━━━━━",
+              "",
+              "▼ メールアドレスを入力して特典GET",
+              "📱 左下のキーボードアイコンをタップ",
+              "例: your@email.com",
+            ].join("\n"),
+          );
+        }
       }
       return;
     }
@@ -648,7 +916,33 @@ async function handleEvent(event: LineEvent): Promise<void> {
     }
 
     // ========================================
-    // 0.6) メールアドレス入力の検知 → 同意確認ボタン表示
+    // 0.6) 認証コード入力の検知 → 有料会員認証
+    // ========================================
+    if (isVerificationCodeFormat(trimmed)) {
+      const code = normalizeCode(trimmed);
+      log.info("Verification code detected", {
+        code: code.slice(0, 2) + "****",
+        userId: anonymizeUserId(lineUserId),
+      });
+
+      try {
+        await handleVerificationCode(code, lineUserId, replyToken);
+      } catch (err) {
+        log.error("Verification code handling error", {
+          errorMessage: err instanceof Error ? err.message : String(err),
+        });
+        if (replyToken) {
+          await replyText(
+            replyToken,
+            "エラーが発生しました。もう一度お試しください。",
+          );
+        }
+      }
+      return;
+    }
+
+    // ========================================
+    // 0.7) メールアドレス入力の検知 → 同意確認ボタン表示
     // ========================================
     if (isEmailFormat(trimmed)) {
       log.info("Email detected", { email: trimmed.slice(0, 5) + "***" });
