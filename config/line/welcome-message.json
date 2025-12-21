@@ -2,16 +2,19 @@
   "$schema": "./welcome-message.schema.json",
   "_comment": "LINE Official Account ウェルカムメッセージ設定",
   "_source": "https://manager.line.biz/account/@529ybhfo/autoresponse/welcome",
-  "_lastUpdated": null,
-  "_updatedBy": null,
+  "_lastUpdated": "2025-12-21",
+  "_updatedBy": "Claude Code",
   "enabled": true,
+  "sendOnlyOnFirstAdd": false,
   "messages": [
     {
       "type": "text",
-      "text": "【取得待ち】LINE Manager から設定を取得してください"
+      "text": "{友だちの表示名} さん\nはじめまして！医療×AIで発信している\n【Cursorvers】です。\n医療AIガバナンスに関する\n『GEMs\n　= Governance,\n　　Ethics,\n　　Management systems』\nへようこそ！\n\nこちらのLINE公式アカウントでは、\n\n🎁 友だち登録してくださった方限定の無料プレゼント\n⚠️ 医療×AIにおけるTipsや現場で使えるノウハウ\n📊 医療×AIに関するnoteの新着配信\nhttps://note.com/nice_wren7963\n👆 知見を深めるセミナーのご案内\n📚 医療×AIに関するサービスのご紹介\n\nなどを随時発信していきます。\n\nでは早速、メニューから「LINE限定無料プレゼント」を押して、\n特典を受け取ってくださいね。"
     }
   ],
   "notes": {
+    "characterCount": "369/500",
+    "placeholders": ["{友だちの表示名}"],
     "howToUpdate": [
       "1. LINE Official Account Manager にログイン",
       "2. 応答設定 > あいさつメッセージ を開く",
