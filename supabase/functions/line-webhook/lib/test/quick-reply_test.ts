@@ -7,10 +7,10 @@ import {
   assertExists,
 } from "https://deno.land/std@0.210.0/assert/mod.ts";
 import {
-  buildDiagnosisQuickReply,
-  buildServicesQuickReply,
   buildBackButtonQuickReply,
+  buildDiagnosisQuickReply,
   buildNewsletterConfirmQuickReply,
+  buildServicesQuickReply,
 } from "../quick-reply.ts";
 import { COURSE_KEYWORDS } from "../constants.ts";
 
@@ -28,7 +28,7 @@ Deno.test("buildDiagnosisQuickReply - includes all course keywords", () => {
 
   COURSE_KEYWORDS.forEach((keyword) => {
     const found = result.items.some(
-      (item) => item.action.type === "message" && item.action.text === keyword
+      (item) => item.action.type === "message" && item.action.text === keyword,
     );
     assertEquals(found, true, `Should include keyword: ${keyword}`);
   });
@@ -39,7 +39,7 @@ Deno.test("buildDiagnosisQuickReply - includes contact button", () => {
 
   const contactButton = result.items.find(
     (item) =>
-      item.action.type === "message" && item.action.text === "お問い合わせ"
+      item.action.type === "message" && item.action.text === "お問い合わせ",
   );
   assertExists(contactButton);
   assertEquals(contactButton.action.label, "お問い合わせ");
@@ -115,7 +115,7 @@ Deno.test("buildNewsletterConfirmQuickReply - has OK and decline options", () =>
 
   const okButton = result.items.find((item) => item.action.label === "OK");
   const declineButton = result.items.find(
-    (item) => item.action.label === "配信しない"
+    (item) => item.action.label === "配信しない",
   );
 
   assertExists(okButton);
@@ -125,7 +125,7 @@ Deno.test("buildNewsletterConfirmQuickReply - has OK and decline options", () =>
   assertEquals((okButton.action as { data: string }).data, "email_opt_in=yes");
   assertEquals(
     (declineButton.action as { data: string }).data,
-    "email_opt_in=no"
+    "email_opt_in=no",
   );
 });
 
@@ -145,7 +145,7 @@ Deno.test("all quick replies - labels are not too long", () => {
       assertEquals(
         label.length <= maxLabelLength,
         true,
-        `Label "${label}" is too long (${label.length} > ${maxLabelLength})`
+        `Label "${label}" is too long (${label.length} > ${maxLabelLength})`,
       );
     });
   });
@@ -165,7 +165,7 @@ Deno.test("all quick replies - have 13 or fewer items", () => {
     assertEquals(
       reply.items.length <= maxItems,
       true,
-      `${name} has too many items (${reply.items.length} > ${maxItems})`
+      `${name} has too many items (${reply.items.length} > ${maxItems})`,
     );
   });
 });

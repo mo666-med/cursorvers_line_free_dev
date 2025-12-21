@@ -2,7 +2,7 @@
  * ユーザー状態管理モジュール
  */
 import { supabase } from "../../_shared/supabase.ts";
-import { createLogger, anonymizeUserId } from "../../_shared/logger.ts";
+import { anonymizeUserId, createLogger } from "../../_shared/logger.ts";
 import type { DiagnosisState } from "./diagnosis-flow.ts";
 
 const log = createLogger("user-state");
@@ -20,7 +20,9 @@ export interface UserState {
 /**
  * ユーザー状態を取得
  */
-export async function getUserState(lineUserId: string): Promise<UserState | null> {
+export async function getUserState(
+  lineUserId: string,
+): Promise<UserState | null> {
   const { data, error } = await supabase
     .from("users")
     .select("diagnosis_state")
@@ -28,7 +30,10 @@ export async function getUserState(lineUserId: string): Promise<UserState | null
     .maybeSingle();
 
   if (error) {
-    log.error("getUserState failed", { userId: anonymizeUserId(lineUserId), errorMessage: error.message });
+    log.error("getUserState failed", {
+      userId: anonymizeUserId(lineUserId),
+      errorMessage: error.message,
+    });
     return null;
   }
 
@@ -40,7 +45,7 @@ export async function getUserState(lineUserId: string): Promise<UserState | null
  */
 export async function updateUserState(
   lineUserId: string,
-  state: UserState | null
+  state: UserState | null,
 ): Promise<void> {
   const { error } = await supabase
     .from("users")
@@ -48,7 +53,10 @@ export async function updateUserState(
     .eq("line_user_id", lineUserId);
 
   if (error) {
-    log.error("updateUserState failed", { userId: anonymizeUserId(lineUserId), errorMessage: error.message });
+    log.error("updateUserState failed", {
+      userId: anonymizeUserId(lineUserId),
+      errorMessage: error.message,
+    });
   }
 }
 
@@ -62,7 +70,9 @@ export async function clearUserState(lineUserId: string): Promise<void> {
 /**
  * 診断状態を取得
  */
-export async function getDiagnosisState(lineUserId: string): Promise<DiagnosisState | null> {
+export async function getDiagnosisState(
+  lineUserId: string,
+): Promise<DiagnosisState | null> {
   const state = await getUserState(lineUserId);
   return state?.diagnosis ?? null;
 }
@@ -72,7 +82,7 @@ export async function getDiagnosisState(lineUserId: string): Promise<DiagnosisSt
  */
 export async function updateDiagnosisState(
   lineUserId: string,
-  diagnosisState: DiagnosisState | null
+  diagnosisState: DiagnosisState | null,
 ): Promise<void> {
   if (diagnosisState) {
     await updateUserState(lineUserId, { diagnosis: diagnosisState });
@@ -91,7 +101,10 @@ export async function clearDiagnosisState(lineUserId: string): Promise<void> {
 /**
  * ツールモードを設定
  */
-export async function setToolMode(lineUserId: string, mode: UserMode): Promise<void> {
+export async function setToolMode(
+  lineUserId: string,
+  mode: UserMode,
+): Promise<void> {
   log.info("Setting tool mode", { userId: anonymizeUserId(lineUserId), mode });
   await updateUserState(lineUserId, { mode });
 }
@@ -107,16 +120,21 @@ export async function getToolMode(lineUserId: string): Promise<UserMode> {
 /**
  * 保留中のメールアドレスを設定
  */
-export async function setPendingEmail(lineUserId: string, email: string): Promise<void> {
+export async function setPendingEmail(
+  lineUserId: string,
+  email: string,
+): Promise<void> {
   try {
-    log.debug("setPendingEmail called", { userId: anonymizeUserId(lineUserId) });
+    log.debug("setPendingEmail called", {
+      userId: anonymizeUserId(lineUserId),
+    });
     const currentState = await getUserState(lineUserId);
     await updateUserState(lineUserId, { ...currentState, pendingEmail: email });
     log.info("Pending email saved", { userId: anonymizeUserId(lineUserId) });
   } catch (err) {
     log.error("setPendingEmail failed", {
       userId: anonymizeUserId(lineUserId),
-      errorMessage: err instanceof Error ? err.message : String(err)
+      errorMessage: err instanceof Error ? err.message : String(err),
     });
     throw err;
   }
@@ -125,7 +143,9 @@ export async function setPendingEmail(lineUserId: string, email: string): Promis
 /**
  * 保留中のメールアドレスを取得
  */
-export async function getPendingEmail(lineUserId: string): Promise<string | null> {
+export async function getPendingEmail(
+  lineUserId: string,
+): Promise<string | null> {
   const state = await getUserState(lineUserId);
   return state?.pendingEmail ?? null;
 }
@@ -137,6 +157,9 @@ export async function clearPendingEmail(lineUserId: string): Promise<void> {
   const currentState = await getUserState(lineUserId);
   if (currentState) {
     const { pendingEmail: _, ...rest } = currentState;
-    await updateUserState(lineUserId, Object.keys(rest).length > 0 ? rest : null);
+    await updateUserState(
+      lineUserId,
+      Object.keys(rest).length > 0 ? rest : null,
+    );
   }
 }

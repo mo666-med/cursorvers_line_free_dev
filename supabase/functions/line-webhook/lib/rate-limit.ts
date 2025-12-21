@@ -2,7 +2,7 @@
  * レート制限モジュール
  */
 import { supabase } from "../../_shared/supabase.ts";
-import { createLogger, anonymizeUserId } from "../../_shared/logger.ts";
+import { anonymizeUserId, createLogger } from "../../_shared/logger.ts";
 
 const log = createLogger("rate-limit");
 
@@ -21,7 +21,7 @@ export interface UsageCountResult {
  */
 export async function getHourlyUsageCount(
   userId: string,
-  interactionType: string
+  interactionType: string,
 ): Promise<UsageCountResult> {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
   const oneHourAgoIso = oneHourAgo.toISOString();
@@ -38,7 +38,7 @@ export async function getHourlyUsageCount(
     log.error("getHourlyUsageCount failed", {
       userId: anonymizeUserId(userId),
       interactionType,
-      errorMessage: error.message
+      errorMessage: error.message,
     });
     return { count: 0, nextAvailable: null };
   }
@@ -58,13 +58,17 @@ export async function getHourlyUsageCount(
 /**
  * Prompt Polisher 用
  */
-export function getHourlyPolishCount(userId: string): Promise<UsageCountResult> {
+export function getHourlyPolishCount(
+  userId: string,
+): Promise<UsageCountResult> {
   return getHourlyUsageCount(userId, "prompt_polisher");
 }
 
 /**
  * Risk Checker 用
  */
-export function getHourlyRiskCheckCount(userId: string): Promise<UsageCountResult> {
+export function getHourlyRiskCheckCount(
+  userId: string,
+): Promise<UsageCountResult> {
   return getHourlyUsageCount(userId, "risk_checker");
 }

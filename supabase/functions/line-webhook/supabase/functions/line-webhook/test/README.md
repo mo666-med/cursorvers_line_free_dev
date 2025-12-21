@@ -6,12 +6,12 @@ Comprehensive test suite for the `line-webhook` Edge Function.
 
 ## Coverage Results
 
-| File | Line Coverage | Branch Coverage |
-|------|---------------|-----------------|
-| `diagnosis-flow.ts` | 91.7% | 58.1% |
-| `note-recommendations.ts` | 100% | 100% |
-| `constants.ts` | 100% | 100% |
-| **Overall** | **93.9%** | **74.5%** |
+| File                      | Line Coverage | Branch Coverage |
+| ------------------------- | ------------- | --------------- |
+| `diagnosis-flow.ts`       | 91.7%         | 58.1%           |
+| `note-recommendations.ts` | 100%          | 100%            |
+| `constants.ts`            | 100%          | 100%            |
+| **Overall**               | **93.9%**     | **74.5%**       |
 
 **Test Count**: 49 tests (24 for diagnosis-flow, 25 for note-recommendations)
 
@@ -26,7 +26,8 @@ cd supabase/functions/line-webhook
 deno test --no-check --allow-env test/
 ```
 
-**Note**: We use `--no-check` because of a TypeScript type checking issue in `types.ts` that doesn't affect runtime behavior.
+**Note**: We use `--no-check` because of a TypeScript type checking issue in
+`types.ts` that doesn't affect runtime behavior.
 
 ### With Coverage Report
 
@@ -35,6 +36,7 @@ deno test --no-check --allow-env --coverage=coverage test/
 ```
 
 Coverage reports are generated in:
+
 - **LCOV**: `coverage/lcov.info`
 - **HTML**: `coverage/html/index.html`
 
@@ -64,6 +66,7 @@ Focus on testing pure functions with no external dependencies.
 Tests for `lib/diagnosis-flow.ts` - The core business logic for diagnosis flows.
 
 **Functions Tested**:
+
 - `getFlowForKeyword()` - Flow retrieval (3 tests)
 - `getTotalQuestions()` - Question count validation (2 tests)
 - `getNextQuestion()` - Layer navigation (5 tests)
@@ -97,6 +100,7 @@ Deno.test("diagnosis-flow: getNextQuestion returns layer1 question", () => {
 Tests for `lib/note-recommendations.ts` - Article recommendation logic.
 
 **Functions Tested**:
+
 - `getRecommendationsForKeyword()` - Course retrieval (3 tests)
 - `getFirstArticle()` - First article extraction (3 tests)
 - `getArticleById()` - ID lookup (2 tests)
@@ -120,7 +124,7 @@ Deno.test("note-recommendations: getArticlesByTag returns articles matching tag"
   for (const article of articles) {
     assert(
       article.tags?.includes("コスト・投資対効果"),
-      `Article ${article.id} should have tag "コスト・投資対効果"`
+      `Article ${article.id} should have tag "コスト・投資対効果"`,
     );
   }
 });
@@ -155,10 +159,15 @@ Will add tests for functions with external dependencies using stubs/mocks.
 import { stub } from "https://deno.land/std@0.208.0/testing/mock.ts";
 
 Deno.test("prompt-polisher: handles OpenAI API success", async () => {
-  const fetchStub = stub(globalThis, "fetch", () =>
-    Promise.resolve(new Response(JSON.stringify({
-      choices: [{ message: { content: "Polished prompt" } }]
-    })))
+  const fetchStub = stub(
+    globalThis,
+    "fetch",
+    () =>
+      Promise.resolve(
+        new Response(JSON.stringify({
+          choices: [{ message: { content: "Polished prompt" } }],
+        })),
+      ),
   );
 
   try {
@@ -235,6 +244,7 @@ Use descriptive test names following this pattern:
 ```
 
 **Examples**:
+
 - `diagnosis-flow: getFlowForKeyword returns QUICK_FLOW`
 - `note-recommendations: getArticlesByTag respects limit parameter`
 
@@ -267,6 +277,7 @@ Use specific assertion functions:
 ### 4. Edge Cases
 
 Always test:
+
 - Empty inputs (`[]`, `""`, `null`)
 - Invalid inputs (non-existent IDs, invalid types)
 - Boundary conditions (limit = 0, limit = max)
@@ -285,7 +296,8 @@ const quickReply = (result.quickReply as any).items;
 
 ### Issue: Type checking fails with "Cannot find name 'DiagnosisKeyword'"
 
-**Solution**: Use `--no-check` flag. This is a known issue with the type re-export pattern in `types.ts` that doesn't affect runtime.
+**Solution**: Use `--no-check` flag. This is a known issue with the type
+re-export pattern in `types.ts` that doesn't affect runtime.
 
 ```bash
 deno test --no-check --allow-env test/
@@ -320,15 +332,16 @@ deno test --no-check --allow-env --allow-net --allow-read test/
 
 ### Breakdown
 
-| Module | Tests | Line Coverage | Branch Coverage |
-|--------|-------|---------------|-----------------|
-| diagnosis-flow | 24 | 91.7% | 58.1% |
-| note-recommendations | 25 | 100% | 100% |
-| **Total** | **49** | **93.9%** | **74.5%** |
+| Module               | Tests  | Line Coverage | Branch Coverage |
+| -------------------- | ------ | ------------- | --------------- |
+| diagnosis-flow       | 24     | 91.7%         | 58.1%           |
+| note-recommendations | 25     | 100%          | 100%            |
+| **Total**            | **49** | **93.9%**     | **74.5%**       |
 
 ### Uncovered Code
 
 The remaining uncovered code in `diagnosis-flow.ts` consists of:
+
 - Error logging branches (low priority)
 - Fallback logic in `getNextQuestion()` for layer3 branching
 - Edge cases in layer3 question retrieval
@@ -348,5 +361,4 @@ For Phase 2 implementation, see the main implementation plan at:
 
 ---
 
-**Last Updated**: 2025-12-21
-**Status**: Phase 1 Complete ✅
+**Last Updated**: 2025-12-21 **Status**: Phase 1 Complete ✅

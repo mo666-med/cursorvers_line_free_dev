@@ -98,7 +98,7 @@ interface RiskCheckerResponse {
  * OpenAI API を呼び出して Risk Checker を実行
  */
 export async function runRiskChecker(
-  rawInput: string
+  rawInput: string,
 ): Promise<RiskCheckerResponse> {
   if (!OPENAI_API_KEY) {
     return {
@@ -129,17 +129,18 @@ export async function runRiskChecker(
     if (!response.ok) {
       const errorText = await response.text();
       log.error("OpenAI API error", { status: response.status, errorText });
-      
+
       if (response.status === 429) {
         return {
           success: false,
           error: "現在混み合っています。しばらくしてから再度お試しください。",
         };
       }
-      
+
       return {
         success: false,
-        error: "リスクチェック中にエラーが発生しました。時間をおいて再度お試しください。",
+        error:
+          "リスクチェック中にエラーが発生しました。時間をおいて再度お試しください。",
       };
     }
 
@@ -169,7 +170,7 @@ export async function runRiskChecker(
       summary: string;
       actionRequired: boolean;
     }
-    
+
     let parsed: ParsedResult;
     try {
       parsed = JSON.parse(content);
@@ -194,7 +195,9 @@ export async function runRiskChecker(
       formattedMessage: formatOutput(parsed),
     };
   } catch (err) {
-    log.error("Unexpected error", { errorMessage: err instanceof Error ? err.message : String(err) });
+    log.error("Unexpected error", {
+      errorMessage: err instanceof Error ? err.message : String(err),
+    });
     return {
       success: false,
       error: "予期せぬエラーが発生しました。時間をおいて再度お試しください。",
@@ -203,34 +206,73 @@ export async function runRiskChecker(
 }
 
 // リスクカテゴリに対応するnote記事（実際の記事URLにマッピング）
-const RISK_NOTE_ARTICLES: Record<string, Array<{ title: string; url: string }>> = {
+const RISK_NOTE_ARTICLES: Record<
+  string,
+  Array<{ title: string; url: string }>
+> = {
   // 医療広告・誇大表現 → 3省2ガイドライン、医療AI導入関連
   adv_advertising: [
-    { title: "3省2ガイドライン解説", url: "https://note.com/nice_wren7963/n/n292021a47632" },
-    { title: "医療AIの導入が失敗する理由", url: "https://note.com/nice_wren7963/n/nc0d61899b04d" },
+    {
+      title: "3省2ガイドライン解説",
+      url: "https://note.com/nice_wren7963/n/n292021a47632",
+    },
+    {
+      title: "医療AIの導入が失敗する理由",
+      url: "https://note.com/nice_wren7963/n/nc0d61899b04d",
+    },
   ],
   // 個人情報・再識別リスク → データガバナンス、3省2ガイドライン
   pii_leakage: [
-    { title: "3省2ガイドライン解説", url: "https://note.com/nice_wren7963/n/n292021a47632" },
-    { title: "患者主権の医療データ革命", url: "https://note.com/nice_wren7963/n/nc48a5f57a7a7" },
-    { title: "JDLA生成AI契約ガイドライン", url: "https://note.com/nice_wren7963/n/n3f579313f6fc" },
+    {
+      title: "3省2ガイドライン解説",
+      url: "https://note.com/nice_wren7963/n/n292021a47632",
+    },
+    {
+      title: "患者主権の医療データ革命",
+      url: "https://note.com/nice_wren7963/n/nc48a5f57a7a7",
+    },
+    {
+      title: "JDLA生成AI契約ガイドライン",
+      url: "https://note.com/nice_wren7963/n/n3f579313f6fc",
+    },
   ],
   // 医学的妥当性 → 臨床知、エビデンス関連
   clinical_quality: [
-    { title: "エビデンスに基づく情報発信", url: "https://note.com/nice_wren7963/n/ne7c234de3eda" },
-    { title: "医療AIの経済性評価", url: "https://note.com/nice_wren7963/n/n806443fb0964" },
-    { title: "臨床医の思考の危機", url: "https://note.com/nice_wren7963/n/n189afd44578a" },
+    {
+      title: "エビデンスに基づく情報発信",
+      url: "https://note.com/nice_wren7963/n/ne7c234de3eda",
+    },
+    {
+      title: "医療AIの経済性評価",
+      url: "https://note.com/nice_wren7963/n/n806443fb0964",
+    },
+    {
+      title: "臨床医の思考の危機",
+      url: "https://note.com/nice_wren7963/n/n189afd44578a",
+    },
   ],
   // 契約・税務 → 副業、契約関連（該当記事がない場合は一般記事）
   contract_tax: [
-    { title: "JDLA生成AI契約ガイドライン", url: "https://note.com/nice_wren7963/n/n3f579313f6fc" },
+    {
+      title: "JDLA生成AI契約ガイドライン",
+      url: "https://note.com/nice_wren7963/n/n3f579313f6fc",
+    },
     { title: "記事一覧", url: "https://note.com/nice_wren7963/all" },
   ],
   // AIガバナンス → EU AI Act、ガバナンス関連
   ai_governance: [
-    { title: "EU AI Actという設計図", url: "https://note.com/nice_wren7963/n/na37ff5135e78" },
-    { title: "AIセキュリティ分科会の議論", url: "https://note.com/nice_wren7963/n/n2d16a1295c7b" },
-    { title: "AI事業者ガイドライン解説", url: "https://note.com/nice_wren7963/n/n39a2a19bf491" },
+    {
+      title: "EU AI Actという設計図",
+      url: "https://note.com/nice_wren7963/n/na37ff5135e78",
+    },
+    {
+      title: "AIセキュリティ分科会の議論",
+      url: "https://note.com/nice_wren7963/n/n2d16a1295c7b",
+    },
+    {
+      title: "AI事業者ガイドライン解説",
+      url: "https://note.com/nice_wren7963/n/n39a2a19bf491",
+    },
   ],
 };
 
@@ -244,7 +286,9 @@ const CATEGORY_NAMES: Record<string, string> = {
 };
 
 // ランク判定
-function getGradeInfo(totalScore: number): { grade: string; emoji: string; text: string } {
+function getGradeInfo(
+  totalScore: number,
+): { grade: string; emoji: string; text: string } {
   if (totalScore >= 90) {
     return { grade: "A", emoji: "🟢", text: "安全（そのまま使用可能）" };
   } else if (totalScore >= 70) {
@@ -282,11 +326,12 @@ function formatOutput(parsed: ParsedResponse): string {
   // ヘッダー：スコアとランク
   let output = "🛡️ Risk Checker\n\n";
   output += `📊 ${totalScore}点 / 100点\n`;
-  output += `${gradeInfo.emoji} ランク ${gradeInfo.grade}：${gradeInfo.text}\n\n`;
+  output +=
+    `${gradeInfo.emoji} ランク ${gradeInfo.grade}：${gradeInfo.text}\n\n`;
 
   // リスクがある項目だけ表示（点数の根拠を明示）
-  const riskyResults = results.filter(r => r.level !== "safe");
-  const safeResults = results.filter(r => r.level === "safe");
+  const riskyResults = results.filter((r) => r.level !== "safe");
+  const safeResults = results.filter((r) => r.level === "safe");
 
   if (riskyResults.length > 0) {
     output += "⚠️ 減点項目\n";
@@ -295,12 +340,12 @@ function formatOutput(parsed: ParsedResponse): string {
       const emoji = r.level === "danger" ? "🚨" : "⚠️";
       const deduction = r.maxScore - r.score;
       output += `${emoji} ${name}（-${deduction}点）\n`;
-      
+
       // ガイドライン名を明示
       if (r.guideline) {
         output += `　📋 ${r.guideline}\n`;
       }
-      
+
       // 問題点と修正案
       if (r.issue) {
         output += `　問題：${r.issue}\n`;
@@ -314,7 +359,8 @@ function formatOutput(parsed: ParsedResponse): string {
 
   if (safeResults.length > 0) {
     output += "✅ 問題なし：";
-    output += safeResults.map(r => CATEGORY_NAMES[r.category] ?? r.category).join("、");
+    output += safeResults.map((r) => CATEGORY_NAMES[r.category] ?? r.category)
+      .join("、");
     output += "\n\n";
   }
 
@@ -324,11 +370,11 @@ function formatOutput(parsed: ParsedResponse): string {
   // リスクがある場合、関連note記事へ誘導（カテゴリに応じて自動選別）
   if (riskyResults.length > 0) {
     output += "---\n📖 詳しい対策・解説\n";
-    
+
     // 重複を避けて最大3件まで表示
     const shownUrls = new Set<string>();
     let count = 0;
-    
+
     for (const r of riskyResults) {
       const articles = RISK_NOTE_ARTICLES[r.category];
       if (articles && count < 3) {
@@ -349,4 +395,3 @@ function formatOutput(parsed: ParsedResponse): string {
 
   return output;
 }
-

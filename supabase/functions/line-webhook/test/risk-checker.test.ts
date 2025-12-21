@@ -2,9 +2,9 @@
 // Tests for risk-checker.ts - Mock tests with external dependencies (Phase 2)
 
 import {
+  assert,
   assertEquals,
   assertExists,
-  assert,
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { stub } from "https://deno.land/std@0.208.0/testing/mock.ts";
 import { runRiskChecker } from "../lib/risk-checker.ts";
@@ -55,9 +55,9 @@ Deno.test("risk-checker: runRiskChecker returns risk analysis on success", async
           JSON.stringify({
             choices: [{ message: { content: JSON.stringify(mockResponse) } }],
           }),
-          { status: 200 }
-        )
-      )
+          { status: 200 },
+        ),
+      ),
   );
 
   try {
@@ -117,9 +117,9 @@ Deno.test("risk-checker: runRiskChecker extracts risk flags correctly", async ()
           JSON.stringify({
             choices: [{ message: { content: JSON.stringify(mockResponse) } }],
           }),
-          { status: 200 }
-        )
-      )
+          { status: 200 },
+        ),
+      ),
   );
 
   try {
@@ -169,9 +169,9 @@ Deno.test("risk-checker: runRiskChecker formats output with score and grade", as
           JSON.stringify({
             choices: [{ message: { content: JSON.stringify(mockResponse) } }],
           }),
-          { status: 200 }
-        )
-      )
+          { status: 200 },
+        ),
+      ),
   );
 
   try {
@@ -210,7 +210,7 @@ Deno.test("risk-checker: runRiskChecker handles 429 rate limit error", async () 
   const fetchStub = stub(
     globalThis,
     "fetch",
-    () => Promise.resolve(new Response("Rate limit exceeded", { status: 429 }))
+    () => Promise.resolve(new Response("Rate limit exceeded", { status: 429 })),
   );
 
   try {
@@ -234,7 +234,8 @@ Deno.test("risk-checker: runRiskChecker handles 500 server error", async () => {
   const fetchStub = stub(
     globalThis,
     "fetch",
-    () => Promise.resolve(new Response("Internal server error", { status: 500 }))
+    () =>
+      Promise.resolve(new Response("Internal server error", { status: 500 })),
   );
 
   try {
@@ -264,9 +265,9 @@ Deno.test("risk-checker: runRiskChecker handles empty response content", async (
           JSON.stringify({
             choices: [{ message: { content: null } }],
           }),
-          { status: 200 }
-        )
-      )
+          { status: 200 },
+        ),
+      ),
   );
 
   try {
@@ -296,9 +297,9 @@ Deno.test("risk-checker: runRiskChecker handles invalid JSON response", async ()
           JSON.stringify({
             choices: [{ message: { content: "invalid json {{{" } }],
           }),
-          { status: 200 }
-        )
-      )
+          { status: 200 },
+        ),
+      ),
   );
 
   try {
@@ -322,7 +323,7 @@ Deno.test("risk-checker: runRiskChecker handles network error", async () => {
   const fetchStub = stub(
     globalThis,
     "fetch",
-    () => Promise.reject(new Error("Network error"))
+    () => Promise.reject(new Error("Network error")),
   );
 
   try {
@@ -374,9 +375,9 @@ Deno.test("risk-checker: formatted message includes guideline names for risky it
           JSON.stringify({
             choices: [{ message: { content: JSON.stringify(mockResponse) } }],
           }),
-          { status: 200 }
-        )
-      )
+          { status: 200 },
+        ),
+      ),
   );
 
   try {
@@ -435,9 +436,9 @@ Deno.test("risk-checker: formatted message shows safe categories", async () => {
           JSON.stringify({
             choices: [{ message: { content: JSON.stringify(mockResponse) } }],
           }),
-          { status: 200 }
-        )
-      )
+          { status: 200 },
+        ),
+      ),
   );
 
   try {
@@ -495,20 +496,26 @@ Deno.test("risk-checker: runRiskChecker sends correct API request with JSON mode
             },
           ],
         }),
-        { status: 200 }
+        { status: 200 },
       );
-    }
+    },
   );
 
   try {
     await runRiskChecker("リスクチェック対象文章");
 
-    assertEquals(capturedRequest.url, "https://api.openai.com/v1/chat/completions");
+    assertEquals(
+      capturedRequest.url,
+      "https://api.openai.com/v1/chat/completions",
+    );
     assertEquals(capturedRequest.method, "POST");
     assertEquals(capturedRequest.body.model, "gpt-4o");
     assertEquals(capturedRequest.body.response_format.type, "json_object");
     assertEquals(capturedRequest.body.messages.length, 2);
-    assertEquals(capturedRequest.body.messages[1].content, "リスクチェック対象文章");
+    assertEquals(
+      capturedRequest.body.messages[1].content,
+      "リスクチェック対象文章",
+    );
   } finally {
     envStub.restore();
     fetchStub.restore();

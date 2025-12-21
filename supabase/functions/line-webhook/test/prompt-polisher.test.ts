@@ -2,9 +2,9 @@
 // Tests for prompt-polisher.ts - Mock tests with external dependencies (Phase 2)
 
 import {
+  assert,
   assertEquals,
   assertExists,
-  assert,
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import { stub } from "https://deno.land/std@0.208.0/testing/mock.ts";
 import { runPromptPolisher } from "../lib/prompt-polisher.ts";
@@ -31,14 +31,15 @@ Deno.test("prompt-polisher: runPromptPolisher returns polished prompt on success
             choices: [
               {
                 message: {
-                  content: "【Role】あなたは循環器内科専門医です\n【Task】診断を行ってください",
+                  content:
+                    "【Role】あなたは循環器内科専門医です\n【Task】診断を行ってください",
                 },
               },
             ],
           }),
-          { status: 200 }
-        )
-      )
+          { status: 200 },
+        ),
+      ),
   );
 
   try {
@@ -69,9 +70,9 @@ Deno.test("prompt-polisher: runPromptPolisher includes footer in output", async 
           JSON.stringify({
             choices: [{ message: { content: "テストプロンプト" } }],
           }),
-          { status: 200 }
-        )
-      )
+          { status: 200 },
+        ),
+      ),
   );
 
   try {
@@ -91,7 +92,8 @@ Deno.test("prompt-polisher: runPromptPolisher includes footer in output", async 
 
 // Skip: Stubbing Deno.env.get is problematic when real env vars exist
 Deno.test({
-  name: "prompt-polisher: runPromptPolisher returns error when API key is missing",
+  name:
+    "prompt-polisher: runPromptPolisher returns error when API key is missing",
   ignore: true,
   fn: async () => {
     // This test is skipped because env var stubbing doesn't work reliably
@@ -107,7 +109,7 @@ Deno.test("prompt-polisher: runPromptPolisher handles 429 rate limit error", asy
   const fetchStub = stub(
     globalThis,
     "fetch",
-    () => Promise.resolve(new Response("Rate limit exceeded", { status: 429 }))
+    () => Promise.resolve(new Response("Rate limit exceeded", { status: 429 })),
   );
 
   try {
@@ -131,7 +133,8 @@ Deno.test("prompt-polisher: runPromptPolisher handles 500 server error", async (
   const fetchStub = stub(
     globalThis,
     "fetch",
-    () => Promise.resolve(new Response("Internal server error", { status: 500 }))
+    () =>
+      Promise.resolve(new Response("Internal server error", { status: 500 })),
   );
 
   try {
@@ -161,9 +164,9 @@ Deno.test("prompt-polisher: runPromptPolisher handles empty response content", a
           JSON.stringify({
             choices: [{ message: { content: null } }],
           }),
-          { status: 200 }
-        )
-      )
+          { status: 200 },
+        ),
+      ),
   );
 
   try {
@@ -187,7 +190,7 @@ Deno.test("prompt-polisher: runPromptPolisher handles network error", async () =
   const fetchStub = stub(
     globalThis,
     "fetch",
-    () => Promise.reject(new Error("Network error"))
+    () => Promise.reject(new Error("Network error")),
   );
 
   try {
@@ -224,9 +227,9 @@ Deno.test("prompt-polisher: runPromptPolisher truncates long output to fit LINE 
           JSON.stringify({
             choices: [{ message: { content: longContent } }],
           }),
-          { status: 200 }
-        )
-      )
+          { status: 200 },
+        ),
+      ),
   );
 
   try {
@@ -254,7 +257,12 @@ Deno.test("prompt-polisher: runPromptPolisher sends correct API request", async 
     return undefined;
   });
 
-  let capturedRequest: { url: string; method?: string; headers?: HeadersInit; body?: unknown } | null = null;
+  let capturedRequest: {
+    url: string;
+    method?: string;
+    headers?: HeadersInit;
+    body?: unknown;
+  } | null = null;
 
   const fetchStub = stub(
     globalThis,
@@ -270,26 +278,34 @@ Deno.test("prompt-polisher: runPromptPolisher sends correct API request", async 
         };
       }
 
-      return Promise.resolve(new Response(
-        JSON.stringify({
-          choices: [{ message: { content: "テスト応答" } }],
-        }),
-        { status: 200 }
-      ));
-    }
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "テスト応答" } }],
+          }),
+          { status: 200 },
+        ),
+      );
+    },
   );
 
   try {
     await runPromptPolisher("診断について教えて");
 
     // Verify request structure
-    assertEquals(capturedRequest.url, "https://api.openai.com/v1/chat/completions");
+    assertEquals(
+      capturedRequest.url,
+      "https://api.openai.com/v1/chat/completions",
+    );
     assertEquals(capturedRequest.method, "POST");
     assertEquals(capturedRequest.body.model, "gpt-4o");
     assertEquals(capturedRequest.body.messages.length, 2);
     assertEquals(capturedRequest.body.messages[0].role, "system");
     assertEquals(capturedRequest.body.messages[1].role, "user");
-    assertEquals(capturedRequest.body.messages[1].content, "診断について教えて");
+    assertEquals(
+      capturedRequest.body.messages[1].content,
+      "診断について教えて",
+    );
   } finally {
     envStub.restore();
     fetchStub.restore();

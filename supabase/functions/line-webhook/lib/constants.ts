@@ -5,10 +5,12 @@
 export const DISCORD_INVITE_URL = "https://discord.gg/TkmmX5Z4vx";
 
 // お問い合わせフォーム
-export const CONTACT_FORM_URL = "https://script.google.com/macros/s/AKfycbwDP0d67qtifyms2h67LawjNWJi_Lh44faPC7Z4axfS_Gdmjzcd50rcl_kmTYBTysKirQ/exec";
+export const CONTACT_FORM_URL =
+  "https://script.google.com/macros/s/AKfycbwDP0d67qtifyms2h67LawjNWJi_Lh44faPC7Z4axfS_Gdmjzcd50rcl_kmTYBTysKirQ/exec";
 
 // サービス詳細LP（GitHub Pages）
-export const SERVICES_LP_URL = "https://cursorvers.github.io/cursorvers-edu/services.html";
+export const SERVICES_LP_URL =
+  "https://cursorvers.github.io/cursorvers-edu/services.html";
 
 // 診断キーワード
 export const COURSE_KEYWORDS = [
@@ -24,6 +26,5 @@ export const COURSE_KEYWORDS = [
 export type DiagnosisKeyword = (typeof COURSE_KEYWORDS)[number];
 
 // Auto-Fix テスト用（意図的なフォーマットエラー）
-const   TEST_AUTO_FIX   =    "this has bad formatting"   ;
+const TEST_AUTO_FIX = "this has bad formatting";
 export { TEST_AUTO_FIX };
-

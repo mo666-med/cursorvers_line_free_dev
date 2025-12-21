@@ -3,60 +3,79 @@
  * 主要ロジックは lib/ 以下に分割
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.43.1?target=deno";
-import { createLogger, anonymizeUserId } from "../_shared/logger.ts";
+import { anonymizeUserId, createLogger } from "../_shared/logger.ts";
 
 const log = createLogger("line-webhook");
 
 // lib モジュール - 定数・型
-import { DISCORD_INVITE_URL, CONTACT_FORM_URL, SERVICES_LP_URL, COURSE_KEYWORDS, type DiagnosisKeyword } from "./lib/constants.ts";
+import {
+  CONTACT_FORM_URL,
+  COURSE_KEYWORDS,
+  type DiagnosisKeyword,
+  DISCORD_INVITE_URL,
+  SERVICES_LP_URL,
+} from "./lib/constants.ts";
 
 // lib モジュール - LINE API
-import { verifyLineSignature, replyText, pushText, replyRaw, type QuickReply } from "./lib/line-api.ts";
+import {
+  pushText,
+  type QuickReply,
+  replyRaw,
+  replyText,
+  verifyLineSignature,
+} from "./lib/line-api.ts";
 
 // lib モジュール - Quick Reply
 import {
-  buildDiagnosisQuickReply,
-  buildServicesQuickReply,
   buildBackButtonQuickReply,
+  buildDiagnosisQuickReply,
   buildNewsletterConfirmQuickReply,
+  buildServicesQuickReply,
 } from "./lib/quick-reply.ts";
 
 // lib モジュール - ユーザー状態管理
 import {
-  getUserState,
-  updateUserState,
+  clearDiagnosisState,
+  clearPendingEmail,
   clearUserState,
   getDiagnosisState,
-  updateDiagnosisState,
-  clearDiagnosisState,
-  setToolMode,
-  getToolMode,
-  setPendingEmail,
   getPendingEmail,
-  clearPendingEmail,
+  getToolMode,
+  getUserState,
+  setPendingEmail,
+  setToolMode,
+  updateDiagnosisState,
+  updateUserState,
   type UserMode,
   type UserState,
 } from "./lib/user-state.ts";
 
 // lib モジュール - レート制限
-import { getHourlyPolishCount, getHourlyRiskCheckCount, MAX_POLISH_PER_HOUR } from "./lib/rate-limit.ts";
+import {
+  getHourlyPolishCount,
+  getHourlyRiskCheckCount,
+  MAX_POLISH_PER_HOUR,
+} from "./lib/rate-limit.ts";
 
 // lib モジュール - 機能
 import { runPromptPolisher } from "./lib/prompt-polisher.ts";
 import { runRiskChecker } from "./lib/risk-checker.ts";
 import { buildCourseEntryMessage } from "./lib/course-router.ts";
 import {
-  type DiagnosisState,
-  getFlowForKeyword,
-  getNextQuestion,
-  getConclusion,
-  isValidAnswer,
-  buildQuestionMessage,
   buildConclusionMessage,
   buildDiagnosisStartMessage,
+  buildQuestionMessage,
+  type DiagnosisState,
+  getConclusion,
+  getFlowForKeyword,
+  getNextQuestion,
   getTotalQuestions,
+  isValidAnswer,
 } from "./lib/diagnosis-flow.ts";
-import { getArticlesByIds, getArticlesByTag } from "./lib/note-recommendations.ts";
+import {
+  getArticlesByIds,
+  getArticlesByTag,
+} from "./lib/note-recommendations.ts";
 
 // =======================
 // 型定義
@@ -97,9 +116,11 @@ interface LineWebhookRequestBody {
 // =======================
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  "";
 const MAX_INPUT_LENGTH = Number(Deno.env.get("MAX_INPUT_LENGTH") ?? "3000");
-const LINE_CHANNEL_ACCESS_TOKEN = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN") ?? "";
+const LINE_CHANNEL_ACCESS_TOKEN = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN") ??
+  "";
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   log.warn("Supabase environment variables are not fully set");
@@ -164,7 +185,9 @@ async function getOrCreateUser(lineUserId: string): Promise<string> {
     .single();
 
   if (insertError || !inserted) {
-    log.error("getOrCreateUser insert error", { errorMessage: insertError?.message });
+    log.error("getOrCreateUser insert error", {
+      errorMessage: insertError?.message,
+    });
     throw insertError;
   }
 
@@ -208,13 +231,18 @@ async function handleEmailRegistration(
   email: string,
   lineUserId: string,
   optInEmail: boolean,
-  replyToken?: string
+  replyToken?: string,
 ): Promise<void> {
   const normalizedEmail = normalizeEmail(email);
 
   try {
     // 既存レコードを確認（emailまたはline_user_idで）
-    type MemberRecord = { id: string; email: string | null; line_user_id: string | null; tier: string | null };
+    type MemberRecord = {
+      id: string;
+      email: string | null;
+      line_user_id: string | null;
+      tier: string | null;
+    };
     let existingRecord: MemberRecord | null = null;
 
     const { data: emailRecord } = await supabase
@@ -277,50 +305,62 @@ async function handleEmailRegistration(
     if (error) {
       log.error("Email registration DB error", { errorMessage: error.message });
       if (replyToken) {
-        await replyText(replyToken, "登録処理中にエラーが発生しました。しばらくしてから再度お試しください。");
+        await replyText(
+          replyToken,
+          "登録処理中にエラーが発生しました。しばらくしてから再度お試しください。",
+        );
       }
       return;
     }
 
     // 成功 → Discord招待URLを返信
     if (replyToken) {
-      await replyText(replyToken, [
-        "🎉 登録完了！特典をGETしました",
-        "",
-        "━━━━━━━━━━━━━━━",
-        "🎁 あなたの特典",
-        "━━━━━━━━━━━━━━━",
-        "",
-        "📚 Discordコミュニティ",
-        "🤖 注目のAI記事要約（毎日更新）",
-        "🛡️ 医療向けセキュリティレポート",
-        "💬 Q&A・相談チャンネル",
-        "⚡ 開発効率化Tips",
-        "📎 資料・リンク集",
-        "",
-        "▼ Discord参加はこちら",
-        DISCORD_INVITE_URL,
-        "",
-        "━━━━━━━━━━━━━━━",
-        "💎 さらに活用したい方へ",
-        "━━━━━━━━━━━━━━━",
-        "",
-        "【Library Member】月額¥2,980",
-        "🌟 無料特典すべて ＋",
-        "📝 有料記事の全文閲覧",
-        "⚡ 検証済みプロンプト集",
-        "",
-        "▼ 詳細・お申込み",
-        SERVICES_LP_URL,
-      ].join("\n"));
+      await replyText(
+        replyToken,
+        [
+          "🎉 登録完了！特典をGETしました",
+          "",
+          "━━━━━━━━━━━━━━━",
+          "🎁 あなたの特典",
+          "━━━━━━━━━━━━━━━",
+          "",
+          "📚 Discordコミュニティ",
+          "🤖 注目のAI記事要約（毎日更新）",
+          "🛡️ 医療向けセキュリティレポート",
+          "💬 Q&A・相談チャンネル",
+          "⚡ 開発効率化Tips",
+          "📎 資料・リンク集",
+          "",
+          "▼ Discord参加はこちら",
+          DISCORD_INVITE_URL,
+          "",
+          "━━━━━━━━━━━━━━━",
+          "💎 さらに活用したい方へ",
+          "━━━━━━━━━━━━━━━",
+          "",
+          "【Library Member】月額¥2,980",
+          "🌟 無料特典すべて ＋",
+          "📝 有料記事の全文閲覧",
+          "⚡ 検証済みプロンプト集",
+          "",
+          "▼ 詳細・お申込み",
+          SERVICES_LP_URL,
+        ].join("\n"),
+      );
     }
 
-    log.info("Email registered", { email: normalizedEmail.slice(0, 5) + "***" });
-
+    log.info("Email registered", {
+      email: normalizedEmail.slice(0, 5) + "***",
+    });
   } catch (err) {
-    log.error("Email registration error", { errorMessage: err instanceof Error ? err.message : String(err) });
+    log.error("Email registration error", {
+      errorMessage: err instanceof Error ? err.message : String(err),
+    });
     if (replyToken) {
-      await replyText(replyToken, "エラーが発生しました。時間をおいて再度お試しください。");
+      await replyText(
+        replyToken,
+        "エラーが発生しました。時間をおいて再度お試しください。",
+      );
     }
   }
 }
@@ -330,54 +370,75 @@ async function handlePromptPolisher(
   rawInput: string,
   lineUserId: string,
   userId: string,
-  replyToken?: string
+  replyToken?: string,
 ): Promise<void> {
-
   if (rawInput.length > MAX_INPUT_LENGTH) {
     if (replyToken) {
-      await replyText(replyToken, `入力が長すぎます（${MAX_INPUT_LENGTH}文字以内）。`);
+      await replyText(
+        replyToken,
+        `入力が長すぎます（${MAX_INPUT_LENGTH}文字以内）。`,
+      );
     }
     return;
   }
 
-  const { count: hourlyCount, nextAvailable } = await getHourlyPolishCount(userId);
+  const { count: hourlyCount, nextAvailable } = await getHourlyPolishCount(
+    userId,
+  );
   if (hourlyCount >= MAX_POLISH_PER_HOUR) {
     if (replyToken) {
-      const waitMinutes = nextAvailable 
+      const waitMinutes = nextAvailable
         ? Math.max(1, Math.ceil((nextAvailable.getTime() - Date.now()) / 60000))
         : 60;
-      await replyText(replyToken, [
-        `⏳ 利用上限に達しました（1時間に${MAX_POLISH_PER_HOUR}回まで）`,
-        "",
-        `約${waitMinutes}分後に再度ご利用いただけます。`,
-        "",
-        "💡 より多くご利用されたい方は、",
-        "Library Memberへのアップグレードをご検討ください。",
-      ].join("\n"));
+      await replyText(
+        replyToken,
+        [
+          `⏳ 利用上限に達しました（1時間に${MAX_POLISH_PER_HOUR}回まで）`,
+          "",
+          `約${waitMinutes}分後に再度ご利用いただけます。`,
+          "",
+          "💡 より多くご利用されたい方は、",
+          "Library Memberへのアップグレードをご検討ください。",
+        ].join("\n"),
+      );
     }
     return;
   }
 
   if (replyToken) {
-    await replyText(replyToken, "プロンプトを整えています。数秒お待ちください。");
+    await replyText(
+      replyToken,
+      "プロンプトを整えています。数秒お待ちください。",
+    );
   }
 
   void (async () => {
     try {
       const result = await runPromptPolisher(rawInput);
       if (result.success && result.polishedPrompt) {
-        const msg = result.polishedPrompt + "\n\n---\n💬 ご質問は Discord で\n" + DISCORD_INVITE_URL;
+        const msg = result.polishedPrompt +
+          "\n\n---\n💬 ご質問は Discord で\n" + DISCORD_INVITE_URL;
         await pushText(lineUserId, msg);
       } else {
         await pushText(lineUserId, result.error ?? "エラーが発生しました。");
       }
     } catch (err) {
-      log.error("prompt_polisher error", { userId: anonymizeUserId(lineUserId), errorMessage: err instanceof Error ? err.message : String(err) });
-      await pushText(lineUserId, "エラーが発生しました。時間をおいて再度お試しください。");
+      log.error("prompt_polisher error", {
+        userId: anonymizeUserId(lineUserId),
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
+      await pushText(
+        lineUserId,
+        "エラーが発生しました。時間をおいて再度お試しください。",
+      );
     }
   })();
 
-  await logInteraction({ userId, interactionType: "prompt_polisher", inputLength: rawInput.length });
+  await logInteraction({
+    userId,
+    interactionType: "prompt_polisher",
+    inputLength: rawInput.length,
+  });
 }
 
 // Risk Checker ハンドラー（プレフィックスありでもなしでも動作）
@@ -385,54 +446,75 @@ async function handleRiskChecker(
   rawInput: string,
   lineUserId: string,
   userId: string,
-  replyToken?: string
+  replyToken?: string,
 ): Promise<void> {
-
   if (rawInput.length > MAX_INPUT_LENGTH) {
     if (replyToken) {
-      await replyText(replyToken, `入力が長すぎます（${MAX_INPUT_LENGTH}文字以内）。`);
+      await replyText(
+        replyToken,
+        `入力が長すぎます（${MAX_INPUT_LENGTH}文字以内）。`,
+      );
     }
     return;
   }
 
-  const { count: hourlyCount, nextAvailable } = await getHourlyRiskCheckCount(userId);
+  const { count: hourlyCount, nextAvailable } = await getHourlyRiskCheckCount(
+    userId,
+  );
   if (hourlyCount >= MAX_POLISH_PER_HOUR) {
     if (replyToken) {
-      const waitMinutes = nextAvailable 
+      const waitMinutes = nextAvailable
         ? Math.max(1, Math.ceil((nextAvailable.getTime() - Date.now()) / 60000))
         : 60;
-      await replyText(replyToken, [
-        `⏳ 利用上限に達しました（1時間に${MAX_POLISH_PER_HOUR}回まで）`,
-        "",
-        `約${waitMinutes}分後に再度ご利用いただけます。`,
-        "",
-        "💡 より多くご利用されたい方は、",
-        "Library Memberへのアップグレードをご検討ください。",
-      ].join("\n"));
+      await replyText(
+        replyToken,
+        [
+          `⏳ 利用上限に達しました（1時間に${MAX_POLISH_PER_HOUR}回まで）`,
+          "",
+          `約${waitMinutes}分後に再度ご利用いただけます。`,
+          "",
+          "💡 より多くご利用されたい方は、",
+          "Library Memberへのアップグレードをご検討ください。",
+        ].join("\n"),
+      );
     }
     return;
   }
 
   if (replyToken) {
-    await replyText(replyToken, "リスクチェックを実行しています。数秒お待ちください。");
+    await replyText(
+      replyToken,
+      "リスクチェックを実行しています。数秒お待ちください。",
+    );
   }
 
   void (async () => {
     try {
       const result = await runRiskChecker(rawInput);
       if (result.success && result.formattedMessage) {
-        const msg = result.formattedMessage + "\n\n---\n💬 詳しい相談は Discord で\n" + DISCORD_INVITE_URL;
+        const msg = result.formattedMessage +
+          "\n\n---\n💬 詳しい相談は Discord で\n" + DISCORD_INVITE_URL;
         await pushText(lineUserId, msg);
       } else {
         await pushText(lineUserId, result.error ?? "エラーが発生しました。");
       }
     } catch (err) {
-      log.error("risk_checker error", { userId: anonymizeUserId(lineUserId), errorMessage: err instanceof Error ? err.message : String(err) });
-      await pushText(lineUserId, "エラーが発生しました。時間をおいて再度お試しください。");
+      log.error("risk_checker error", {
+        userId: anonymizeUserId(lineUserId),
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
+      await pushText(
+        lineUserId,
+        "エラーが発生しました。時間をおいて再度お試しください。",
+      );
     }
   })();
 
-  await logInteraction({ userId, interactionType: "risk_checker", inputLength: rawInput.length });
+  await logInteraction({
+    userId,
+    interactionType: "risk_checker",
+    inputLength: rawInput.length,
+  });
 }
 
 // =======================
@@ -453,536 +535,634 @@ async function handleEvent(event: LineEvent): Promise<void> {
     const lineUserId = source.userId;
     log.debug("Processing event", { userId: anonymizeUserId(lineUserId) });
 
-  const userId = await getOrCreateUser(lineUserId);
+    const userId = await getOrCreateUser(lineUserId);
 
-  // ========================================
-  // Follow イベント（友だち追加時）
-  // ========================================
-  if (event.type === "follow") {
-    log.info("Follow event", { userId: anonymizeUserId(lineUserId) });
-    if (replyToken) {
-      await replyText(replyToken, [
-        "🎉 友だち追加ありがとうございます！",
-        "",
-        "━━━━━━━━━━━━━━━",
-        "🎁 無料特典（メール登録で即GET）",
-        "━━━━━━━━━━━━━━━",
-        "",
-        "📚 Discordコミュニティ参加",
-        "🤖 注目のAI記事要約（毎日更新）",
-        "🛡️ 医療向けセキュリティレポート",
-        "💬 Q&A・相談チャンネル",
-        "⚡ 開発効率化Tips",
-        "📎 資料・リンク集",
-        "",
-        "━━━━━━━━━━━━━━━",
-        "",
-        "▼ メールアドレスを入力して特典GET",
-        "📱 左下のキーボードアイコンをタップ",
-        "例: your@email.com",
-      ].join("\n"));
-    }
-    return;
-  }
-
-  let text: string | null = null;
-  if (event.type === "message" && event.message?.type === "text") {
-    text = event.message.text;
-  } else if (event.type === "postback" && event.postback?.data) {
-    text = event.postback.data;
-  }
-
-  if (!text) return;
-
-  const trimmed = text.trim();
-  console.log("[line-webhook] received text:", trimmed, "user:", lineUserId);
-
-  // ========================================
-  // 0) ツールモード中の処理（最優先）
-  // ========================================
-  const toolMode = await getToolMode(lineUserId);
-  log.debug("Tool mode check", { mode: toolMode, userId: anonymizeUserId(lineUserId) });
-  
-  if (toolMode) {
-    // 「キャンセル」「戻る」でモードを終了
-    if (trimmed === "キャンセル" || trimmed === "cancel" || trimmed === "戻る") {
-      await clearUserState(lineUserId);
+    // ========================================
+    // Follow イベント（友だち追加時）
+    // ========================================
+    if (event.type === "follow") {
+      log.info("Follow event", { userId: anonymizeUserId(lineUserId) });
       if (replyToken) {
-        await replyText(replyToken, "モードを終了しました。\n\n下のボタンから選んでください。", buildServicesQuickReply());
+        await replyText(
+          replyToken,
+          [
+            "🎉 友だち追加ありがとうございます！",
+            "",
+            "━━━━━━━━━━━━━━━",
+            "🎁 無料特典（メール登録で即GET）",
+            "━━━━━━━━━━━━━━━",
+            "",
+            "📚 Discordコミュニティ参加",
+            "🤖 注目のAI記事要約（毎日更新）",
+            "🛡️ 医療向けセキュリティレポート",
+            "💬 Q&A・相談チャンネル",
+            "⚡ 開発効率化Tips",
+            "📎 資料・リンク集",
+            "",
+            "━━━━━━━━━━━━━━━",
+            "",
+            "▼ メールアドレスを入力して特典GET",
+            "📱 左下のキーボードアイコンをタップ",
+            "例: your@email.com",
+          ].join("\n"),
+        );
       }
       return;
     }
 
-    // プロンプト整形モード → 入力をそのままPolish
-    if (toolMode === "polish") {
-      log.debug("Processing polish mode", { inputLength: trimmed.length });
-      await clearUserState(lineUserId); // 1回使ったらモード終了
-      await handlePromptPolisher(trimmed, lineUserId, userId, replyToken);
-      return;
+    let text: string | null = null;
+    if (event.type === "message" && event.message?.type === "text") {
+      text = event.message.text;
+    } else if (event.type === "postback" && event.postback?.data) {
+      text = event.postback.data;
     }
 
-    // リスクチェックモード → 入力をそのままチェック
-    if (toolMode === "risk_check") {
-      log.debug("Processing risk_check mode", { inputLength: trimmed.length });
-      await clearUserState(lineUserId); // 1回使ったらモード終了
-      await handleRiskChecker(trimmed, lineUserId, userId, replyToken);
-      return;
-    }
-  }
+    if (!text) return;
 
-  // ========================================
-  // 0.5) メルマガ同意確認のpostback処理
-  // ========================================
-  if (trimmed === "email_opt_in=yes" || trimmed === "email_opt_in=no") {
-    const pendingEmail = await getPendingEmail(lineUserId);
-    if (!pendingEmail) {
-      if (replyToken) {
-        await replyText(replyToken, "セッションが切れました。もう一度メールアドレスを入力してください。");
-      }
-      return;
-    }
+    const trimmed = text.trim();
+    console.log("[line-webhook] received text:", trimmed, "user:", lineUserId);
 
-    const optIn = trimmed === "email_opt_in=yes";
-    await clearPendingEmail(lineUserId);
-    await handleEmailRegistration(pendingEmail, lineUserId, optIn, replyToken);
-    return;
-  }
+    // ========================================
+    // 0) ツールモード中の処理（最優先）
+    // ========================================
+    const toolMode = await getToolMode(lineUserId);
+    log.debug("Tool mode check", {
+      mode: toolMode,
+      userId: anonymizeUserId(lineUserId),
+    });
 
-  // ========================================
-  // 0.6) メールアドレス入力の検知 → 同意確認ボタン表示
-  // ========================================
-  if (isEmailFormat(trimmed)) {
-    log.info("Email detected", { email: trimmed.slice(0, 5) + "***" });
-
-    // 同期的に処理（バックグラウンドではなくawaitで待つ）
-    try {
-      const normalizedEmail = normalizeEmail(trimmed);
-
-      await setPendingEmail(lineUserId, normalizedEmail);
-      log.debug("Pending email saved");
-
-      // Reply APIで確認メッセージ送信（Quick Reply付き）
-      if (replyToken) {
-        const text = [
-          "📧 メール登録",
-          `${trimmed}`,
-          "",
-          "━━━━━━━━━━━━━━━",
-          "📬 メルマガ内容",
-          "━━━━━━━━━━━━━━━",
-          "・AIを活用した副業最前線",
-          "・「経験知」をAIで増幅させる思考法",
-          "・「有料級」限定コンテンツ配信",
-          "",
-          "配信しますか？",
-          "※ いつでも配信停止できます",
-        ].join("\n");
-
-        const res = await fetch("https://api.line.me/v2/bot/message/reply", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
-          },
-          body: JSON.stringify({
-            replyToken,
-            messages: [{
-              type: "text",
-              text: text,
-              quickReply: buildNewsletterConfirmQuickReply(),
-            }],
-          }),
-        });
-        log.debug("Newsletter confirmation sent", { status: res.status });
-      }
-    } catch (err) {
-      log.error("Email handling error", { errorMessage: err instanceof Error ? err.message : String(err) });
-      if (replyToken) {
-        await replyText(replyToken, "エラーが発生しました。もう一度お試しください。");
-      }
-    }
-
-    return;
-  }
-
-  // ========================================
-  // 1) 明示的プレフィックスコマンド
-  // ========================================
-
-  // Prompt Polisher（プレフィックス付き）
-  if (trimmed.startsWith("洗練:") || trimmed.startsWith("polish:")) {
-    const rawInput = trimmed.replace(/^洗練:|^polish:/, "").trim();
-    await handlePromptPolisher(rawInput, lineUserId, userId, replyToken);
-    return;
-  }
-
-  // Risk Checker（プレフィックス付き）
-  if (trimmed.startsWith("check:") || trimmed.startsWith("チェック:")) {
-    const rawInput = trimmed.replace(/^check:|^チェック:/, "").trim();
-    await handleRiskChecker(rawInput, lineUserId, userId, replyToken);
-    return;
-  }
-
-  // ========================================
-  // 1) 診断フロー中かチェック
-  // ========================================
-  const diagnosisState = await getDiagnosisState(lineUserId);
-  
-  if (diagnosisState) {
-    // 「キャンセル」で診断を中断
-    if (trimmed === "キャンセル" || trimmed === "cancel") {
-      await clearDiagnosisState(lineUserId);
-      if (replyToken) {
-        await replyText(replyToken, "診断を中断しました。\n\n下のボタンから再度お試しください。", buildDiagnosisQuickReply());
-      }
-      return;
-    }
-
-    // 回答が有効かチェック
-    if (!isValidAnswer(diagnosisState, trimmed)) {
-      if (replyToken) {
-        const question = getNextQuestion(diagnosisState);
-        if (question) {
-          const { text: questionText, quickReply } = buildQuestionMessage(question, diagnosisState.layer);
+    if (toolMode) {
+      // 「キャンセル」「戻る」でモードを終了
+      if (
+        trimmed === "キャンセル" || trimmed === "cancel" || trimmed === "戻る"
+      ) {
+        await clearUserState(lineUserId);
+        if (replyToken) {
           await replyText(
             replyToken,
-            "選択肢から選んでください。\n\n" + questionText,
-            quickReply as QuickReply
+            "モードを終了しました。\n\n下のボタンから選んでください。",
+            buildServicesQuickReply(),
+          );
+        }
+        return;
+      }
+
+      // プロンプト整形モード → 入力をそのままPolish
+      if (toolMode === "polish") {
+        log.debug("Processing polish mode", { inputLength: trimmed.length });
+        await clearUserState(lineUserId); // 1回使ったらモード終了
+        await handlePromptPolisher(trimmed, lineUserId, userId, replyToken);
+        return;
+      }
+
+      // リスクチェックモード → 入力をそのままチェック
+      if (toolMode === "risk_check") {
+        log.debug("Processing risk_check mode", {
+          inputLength: trimmed.length,
+        });
+        await clearUserState(lineUserId); // 1回使ったらモード終了
+        await handleRiskChecker(trimmed, lineUserId, userId, replyToken);
+        return;
+      }
+    }
+
+    // ========================================
+    // 0.5) メルマガ同意確認のpostback処理
+    // ========================================
+    if (trimmed === "email_opt_in=yes" || trimmed === "email_opt_in=no") {
+      const pendingEmail = await getPendingEmail(lineUserId);
+      if (!pendingEmail) {
+        if (replyToken) {
+          await replyText(
+            replyToken,
+            "セッションが切れました。もう一度メールアドレスを入力してください。",
+          );
+        }
+        return;
+      }
+
+      const optIn = trimmed === "email_opt_in=yes";
+      await clearPendingEmail(lineUserId);
+      await handleEmailRegistration(
+        pendingEmail,
+        lineUserId,
+        optIn,
+        replyToken,
+      );
+      return;
+    }
+
+    // ========================================
+    // 0.6) メールアドレス入力の検知 → 同意確認ボタン表示
+    // ========================================
+    if (isEmailFormat(trimmed)) {
+      log.info("Email detected", { email: trimmed.slice(0, 5) + "***" });
+
+      // 同期的に処理（バックグラウンドではなくawaitで待つ）
+      try {
+        const normalizedEmail = normalizeEmail(trimmed);
+
+        await setPendingEmail(lineUserId, normalizedEmail);
+        log.debug("Pending email saved");
+
+        // Reply APIで確認メッセージ送信（Quick Reply付き）
+        if (replyToken) {
+          const text = [
+            "📧 メール登録",
+            `${trimmed}`,
+            "",
+            "━━━━━━━━━━━━━━━",
+            "📬 メルマガ内容",
+            "━━━━━━━━━━━━━━━",
+            "・AIを活用した副業最前線",
+            "・「経験知」をAIで増幅させる思考法",
+            "・「有料級」限定コンテンツ配信",
+            "",
+            "配信しますか？",
+            "※ いつでも配信停止できます",
+          ].join("\n");
+
+          const res = await fetch("https://api.line.me/v2/bot/message/reply", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${LINE_CHANNEL_ACCESS_TOKEN}`,
+            },
+            body: JSON.stringify({
+              replyToken,
+              messages: [{
+                type: "text",
+                text: text,
+                quickReply: buildNewsletterConfirmQuickReply(),
+              }],
+            }),
+          });
+          log.debug("Newsletter confirmation sent", { status: res.status });
+        }
+      } catch (err) {
+        log.error("Email handling error", {
+          errorMessage: err instanceof Error ? err.message : String(err),
+        });
+        if (replyToken) {
+          await replyText(
+            replyToken,
+            "エラーが発生しました。もう一度お試しください。",
+          );
+        }
+      }
+
+      return;
+    }
+
+    // ========================================
+    // 1) 明示的プレフィックスコマンド
+    // ========================================
+
+    // Prompt Polisher（プレフィックス付き）
+    if (trimmed.startsWith("洗練:") || trimmed.startsWith("polish:")) {
+      const rawInput = trimmed.replace(/^洗練:|^polish:/, "").trim();
+      await handlePromptPolisher(rawInput, lineUserId, userId, replyToken);
+      return;
+    }
+
+    // Risk Checker（プレフィックス付き）
+    if (trimmed.startsWith("check:") || trimmed.startsWith("チェック:")) {
+      const rawInput = trimmed.replace(/^check:|^チェック:/, "").trim();
+      await handleRiskChecker(rawInput, lineUserId, userId, replyToken);
+      return;
+    }
+
+    // ========================================
+    // 1) 診断フロー中かチェック
+    // ========================================
+    const diagnosisState = await getDiagnosisState(lineUserId);
+
+    if (diagnosisState) {
+      // 「キャンセル」で診断を中断
+      if (trimmed === "キャンセル" || trimmed === "cancel") {
+        await clearDiagnosisState(lineUserId);
+        if (replyToken) {
+          await replyText(
+            replyToken,
+            "診断を中断しました。\n\n下のボタンから再度お試しください。",
+            buildDiagnosisQuickReply(),
+          );
+        }
+        return;
+      }
+
+      // 回答が有効かチェック
+      if (!isValidAnswer(diagnosisState, trimmed)) {
+        if (replyToken) {
+          const question = getNextQuestion(diagnosisState);
+          if (question) {
+            const { text: questionText, quickReply } = buildQuestionMessage(
+              question,
+              diagnosisState.layer,
+            );
+            await replyText(
+              replyToken,
+              "選択肢から選んでください。\n\n" + questionText,
+              quickReply as QuickReply,
+            );
+          }
+        }
+        return;
+      }
+
+      // 回答を記録し、次のレイヤーへ
+      const newState: DiagnosisState = {
+        ...diagnosisState,
+        layer: diagnosisState.layer + 1,
+        answers: [...diagnosisState.answers, trimmed],
+      };
+
+      // 総質問数を取得
+      const totalQ = getTotalQuestions(newState.keyword);
+
+      // 全問回答完了 → 結論を表示
+      if (newState.answers.length >= totalQ) {
+        const articleIds = getConclusion(newState);
+        let articles = articleIds ? getArticlesByIds(articleIds) : [];
+
+        // タグベースのフォールバック（記事IDが見つからない場合）
+        if (articles.length === 0) {
+          const interest = newState.answers[1]; // layer2の回答
+          if (interest) {
+            articles = getArticlesByTag(interest, 3);
+            log.debug("Using tag-based fallback", {
+              interest,
+              articleCount: articles.length,
+            });
+          } else {
+            log.warn("No interest found in answers", {
+              answers: newState.answers,
+            });
+          }
+        }
+
+        if (articles.length > 0) {
+          const conclusionMessage = buildConclusionMessage(newState, articles);
+          if (replyToken) {
+            await replyText(replyToken, conclusionMessage);
+          }
+        } else {
+          // 記事が見つからない場合のフォールバック
+          if (replyToken) {
+            await replyText(
+              replyToken,
+              [
+                `【${newState.keyword}】診断完了`,
+                "",
+                "ご回答ありがとうございました。",
+                "関連記事の準備中です。",
+                "",
+                "---",
+                "💬 詳しくは Discord でご相談ください",
+                DISCORD_INVITE_URL,
+              ].join("\n"),
+            );
+          }
+        }
+
+        await clearDiagnosisState(lineUserId);
+        await logInteraction({
+          userId,
+          interactionType: "course_entry",
+          courseKeyword: newState.keyword,
+          inputLength: trimmed.length,
+        });
+        return;
+      }
+
+      // 次の質問を表示
+      await updateDiagnosisState(lineUserId, newState);
+      const nextQuestion = getNextQuestion(newState);
+      if (nextQuestion && replyToken) {
+        const { text: questionText, quickReply } = buildQuestionMessage(
+          nextQuestion,
+          newState.layer,
+          totalQ,
+        );
+        await replyText(replyToken, questionText, quickReply as QuickReply);
+      }
+      return;
+    }
+
+    // ========================================
+    // 1.5) 「診断」→ クイック診断フロー開始（3問）
+    // ========================================
+    if (trimmed === "診断") {
+      console.log("[line-webhook] start quick diagnosis for user:", lineUserId);
+      const flow = getFlowForKeyword("クイック診断");
+      const startMessage = flow
+        ? buildDiagnosisStartMessage("クイック診断")
+        : null;
+      if (flow && startMessage && replyToken) {
+        const initialState: DiagnosisState = {
+          keyword: "クイック診断",
+          layer: 1,
+          answers: [],
+        };
+        try {
+          await updateDiagnosisState(lineUserId, initialState);
+          console.log(
+            "[line-webhook] diagnosis state initialized for user:",
+            lineUserId,
+          );
+        } catch (err) {
+          console.error(
+            "[line-webhook] updateDiagnosisState error (start quick diagnosis)",
+            err,
+          );
+        }
+        await replyText(
+          replyToken,
+          startMessage.text,
+          startMessage.quickReply as QuickReply,
+        );
+      } else {
+        console.warn(
+          "[line-webhook] quick diagnosis flow or startMessage missing",
+        );
+      }
+      return;
+    }
+
+    // ========================================
+    // 2) 診断キーワード → すべて3層フロー
+    // ========================================
+    const courseKeyword = detectCourseKeyword(trimmed);
+    if (courseKeyword) {
+      const flow = getFlowForKeyword(courseKeyword);
+      if (flow) {
+        const startMessage = buildDiagnosisStartMessage(courseKeyword);
+        if (startMessage && replyToken) {
+          // 診断状態を初期化
+          const initialState: DiagnosisState = {
+            keyword: courseKeyword,
+            layer: 1,
+            answers: [],
+          };
+          await updateDiagnosisState(lineUserId, initialState);
+          await replyText(
+            replyToken,
+            startMessage.text,
+            startMessage.quickReply as QuickReply,
+          );
+        }
+        return;
+      }
+
+      // フローが定義されていない場合のフォールバック（通常は発生しない）
+      const courseMessage = buildCourseEntryMessage(courseKeyword);
+      if (replyToken) {
+        await replyText(replyToken, courseMessage);
+      }
+      await logInteraction({
+        userId,
+        interactionType: "course_entry",
+        courseKeyword,
+        inputLength: trimmed.length,
+      });
+      return;
+    }
+
+    // ========================================
+    // 3) 「特典」→ メール登録でDiscord招待
+    // ========================================
+    if (trimmed === "特典" || trimmed === "特典GET") {
+      // 既にメール登録済みか確認
+      const { data: existingMember } = await supabase
+        .from("members")
+        .select("email")
+        .eq("line_user_id", lineUserId)
+        .maybeSingle();
+
+      if (existingMember?.email) {
+        // 登録済み → Discord URLを再送 + 特典内容リマインド
+        if (replyToken) {
+          await replyText(
+            replyToken,
+            [
+              "✅ 登録済みです！特典をご活用ください",
+              "",
+              "━━━━━━━━━━━━━━━",
+              "🎁 あなたの特典",
+              "━━━━━━━━━━━━━━━",
+              "",
+              "📚 Discordコミュニティ",
+              "🤖 注目のAI記事要約（毎日更新）",
+              "🛡️ 医療向けセキュリティレポート",
+              "💬 Q&A・相談チャンネル",
+              "⚡ 開発効率化Tips",
+              "📎 資料・リンク集",
+              "",
+              "▼ Discord参加はこちら",
+              DISCORD_INVITE_URL,
+            ].join("\n"),
+          );
+        }
+      } else {
+        // 未登録 → メール入力を促す
+        if (replyToken) {
+          await replyText(
+            replyToken,
+            [
+              "━━━━━━━━━━━━━━━",
+              "🎁 無料特典（メール登録で即GET）",
+              "━━━━━━━━━━━━━━━",
+              "",
+              "📚 Discordコミュニティ参加",
+              "🤖 注目のAI記事要約（毎日更新）",
+              "🛡️ 医療向けセキュリティレポート",
+              "💬 Q&A・相談チャンネル",
+              "⚡ 開発効率化Tips",
+              "📎 資料・リンク集",
+              "",
+              "━━━━━━━━━━━━━━━",
+              "",
+              "▼ メールアドレスを入力して特典GET",
+              "📱 左下のキーボードアイコンをタップ",
+              "例: your@email.com",
+            ].join("\n"),
           );
         }
       }
       return;
     }
 
-    // 回答を記録し、次のレイヤーへ
-    const newState: DiagnosisState = {
-      ...diagnosisState,
-      layer: diagnosisState.layer + 1,
-      answers: [...diagnosisState.answers, trimmed],
-    };
-
-    // 総質問数を取得
-    const totalQ = getTotalQuestions(newState.keyword);
-
-    // 全問回答完了 → 結論を表示
-    if (newState.answers.length >= totalQ) {
-      const articleIds = getConclusion(newState);
-      let articles = articleIds ? getArticlesByIds(articleIds) : [];
-      
-      // タグベースのフォールバック（記事IDが見つからない場合）
-      if (articles.length === 0) {
-        const interest = newState.answers[1]; // layer2の回答
-        if (interest) {
-          articles = getArticlesByTag(interest, 3);
-          log.debug("Using tag-based fallback", { interest, articleCount: articles.length });
-        } else {
-          log.warn("No interest found in answers", { answers: newState.answers });
-        }
-      }
-      
-      if (articles.length > 0) {
-        const conclusionMessage = buildConclusionMessage(newState, articles);
-        if (replyToken) {
-          await replyText(replyToken, conclusionMessage);
-        }
-      } else {
-        // 記事が見つからない場合のフォールバック
-        if (replyToken) {
-          await replyText(replyToken, [
-            `【${newState.keyword}】診断完了`,
+    // ========================================
+    // 3.5) 「コミュニティ」→ 特典案内へ誘導
+    // ========================================
+    if (trimmed === "コミュニティ") {
+      if (replyToken) {
+        await replyText(
+          replyToken,
+          [
+            "Discord コミュニティへの参加は、",
+            "メールアドレス登録が必要です。",
             "",
-            "ご回答ありがとうございました。",
-            "関連記事の準備中です。",
-            "",
-            "---",
-            "💬 詳しくは Discord でご相談ください",
-            DISCORD_INVITE_URL,
-          ].join("\n"));
-        }
-      }
-      
-      await clearDiagnosisState(lineUserId);
-      await logInteraction({
-        userId,
-        interactionType: "course_entry",
-        courseKeyword: newState.keyword,
-        inputLength: trimmed.length,
-      });
-      return;
-    }
-
-    // 次の質問を表示
-    await updateDiagnosisState(lineUserId, newState);
-    const nextQuestion = getNextQuestion(newState);
-    if (nextQuestion && replyToken) {
-      const { text: questionText, quickReply } = buildQuestionMessage(nextQuestion, newState.layer, totalQ);
-      await replyText(replyToken, questionText, quickReply as QuickReply);
-    }
-    return;
-  }
-
-  // ========================================
-  // 1.5) 「診断」→ クイック診断フロー開始（3問）
-  // ========================================
-  if (trimmed === "診断") {
-    console.log("[line-webhook] start quick diagnosis for user:", lineUserId);
-    const flow = getFlowForKeyword("クイック診断");
-    const startMessage = flow ? buildDiagnosisStartMessage("クイック診断") : null;
-    if (flow && startMessage && replyToken) {
-      const initialState: DiagnosisState = {
-        keyword: "クイック診断",
-        layer: 1,
-        answers: [],
-      };
-      try {
-        await updateDiagnosisState(lineUserId, initialState);
-        console.log("[line-webhook] diagnosis state initialized for user:", lineUserId);
-      } catch (err) {
-        console.error("[line-webhook] updateDiagnosisState error (start quick diagnosis)", err);
-      }
-      await replyText(replyToken, startMessage.text, startMessage.quickReply as QuickReply);
-    } else {
-      console.warn("[line-webhook] quick diagnosis flow or startMessage missing");
-    }
-    return;
-  }
-
-  // ========================================
-  // 2) 診断キーワード → すべて3層フロー
-  // ========================================
-  const courseKeyword = detectCourseKeyword(trimmed);
-  if (courseKeyword) {
-    const flow = getFlowForKeyword(courseKeyword);
-    if (flow) {
-      const startMessage = buildDiagnosisStartMessage(courseKeyword);
-      if (startMessage && replyToken) {
-        // 診断状態を初期化
-        const initialState: DiagnosisState = {
-          keyword: courseKeyword,
-          layer: 1,
-          answers: [],
-        };
-        await updateDiagnosisState(lineUserId, initialState);
-        await replyText(replyToken, startMessage.text, startMessage.quickReply as QuickReply);
+            "「特典」と入力するか、",
+            "リッチメニューの「特典GET」をタップしてください。",
+          ].join("\n"),
+        );
       }
       return;
     }
 
-    // フローが定義されていない場合のフォールバック（通常は発生しない）
-    const courseMessage = buildCourseEntryMessage(courseKeyword);
-    if (replyToken) {
-      await replyText(replyToken, courseMessage);
-    }
-    await logInteraction({ userId, interactionType: "course_entry", courseKeyword, inputLength: trimmed.length });
-    return;
-  }
-
-  // ========================================
-  // 3) 「特典」→ メール登録でDiscord招待
-  // ========================================
-  if (trimmed === "特典" || trimmed === "特典GET") {
-    // 既にメール登録済みか確認
-    const { data: existingMember } = await supabase
-      .from("members")
-      .select("email")
-      .eq("line_user_id", lineUserId)
-      .maybeSingle();
-
-    if (existingMember?.email) {
-      // 登録済み → Discord URLを再送 + 特典内容リマインド
+    // ========================================
+    // 4) 「お問い合わせ」→ 問い合わせフォーム
+    // ========================================
+    if (trimmed === "お問い合わせ" || trimmed === "問い合わせ") {
       if (replyToken) {
-        await replyText(replyToken, [
-          "✅ 登録済みです！特典をご活用ください",
-          "",
-          "━━━━━━━━━━━━━━━",
-          "🎁 あなたの特典",
-          "━━━━━━━━━━━━━━━",
-          "",
-          "📚 Discordコミュニティ",
-          "🤖 注目のAI記事要約（毎日更新）",
-          "🛡️ 医療向けセキュリティレポート",
-          "💬 Q&A・相談チャンネル",
-          "⚡ 開発効率化Tips",
-          "📎 資料・リンク集",
-          "",
-          "▼ Discord参加はこちら",
-          DISCORD_INVITE_URL,
-        ].join("\n"));
+        await replyText(
+          replyToken,
+          [
+            "📧 お問い合わせ",
+            "",
+            "ご質問・ご相談は以下のフォームからお願いします。",
+            "",
+            "▼ お問い合わせフォーム",
+            CONTACT_FORM_URL,
+          ].join("\n"),
+        );
       }
-    } else {
-      // 未登録 → メール入力を促す
+      return;
+    }
+
+    // ========================================
+    // 5) 「サービス一覧」→ サービス選択メニュー
+    // ========================================
+    if (trimmed === "サービス一覧") {
       if (replyToken) {
-        await replyText(replyToken, [
-          "━━━━━━━━━━━━━━━",
-          "🎁 無料特典（メール登録で即GET）",
-          "━━━━━━━━━━━━━━━",
-          "",
-          "📚 Discordコミュニティ参加",
-          "🤖 注目のAI記事要約（毎日更新）",
-          "🛡️ 医療向けセキュリティレポート",
-          "💬 Q&A・相談チャンネル",
-          "⚡ 開発効率化Tips",
-          "📎 資料・リンク集",
-          "",
-          "━━━━━━━━━━━━━━━",
-          "",
-          "▼ メールアドレスを入力して特典GET",
-          "📱 左下のキーボードアイコンをタップ",
-          "例: your@email.com",
-        ].join("\n"));
+        await replyText(
+          replyToken,
+          [
+            "✨ Cursorvers Edu サービス",
+            "",
+            "【無料】LINE上で使えるツール",
+            "・プロンプト整形",
+            "・リスクチェック",
+            "・AI導入診断",
+            "",
+            "【有料】Library Member ¥2,980/月",
+            "・有料記事の全文閲覧",
+            "・検証済みプロンプト集",
+            "・Master Class への充当可能",
+            "",
+            "▼ 詳細・お申込みはこちら",
+            SERVICES_LP_URL,
+            "",
+            "▼ または下のボタンから選択",
+          ].join("\n"),
+          buildServicesQuickReply(),
+        );
       }
+      return;
     }
-    return;
-  }
 
-  // ========================================
-  // 3.5) 「コミュニティ」→ 特典案内へ誘導
-  // ========================================
-  if (trimmed === "コミュニティ") {
+    // ========================================
+    // 6) 「サービス詳細」→ LP へのリンク
+    // ========================================
+    if (trimmed === "サービス詳細を見る") {
+      if (replyToken) {
+        await replyText(
+          replyToken,
+          [
+            "📖 サービス詳細ページ",
+            "",
+            "各プランの詳細・料金はこちらでご確認いただけます。",
+            "",
+            "▼ サービス一覧（Web）",
+            SERVICES_LP_URL,
+          ].join("\n"),
+        );
+      }
+      return;
+    }
+
+    // ========================================
+    // 7) 「プロンプト整形の使い方」→ プロンプト整形モードに入る
+    // ========================================
+    if (trimmed === "プロンプト整形の使い方") {
+      // プロンプト整形モードを設定
+      await setToolMode(lineUserId, "polish");
+
+      if (replyToken) {
+        await replyText(
+          replyToken,
+          [
+            "🔧 プロンプト整形モード",
+            "",
+            "整形したい文章をそのまま入力してください。",
+            "普通にAIに聞くより高品質な回答を引き出せる",
+            "構造化プロンプトに変換します。",
+            "",
+            "📱 左下の「キーボード」アイコンをタップ",
+            "",
+            "【入力例】",
+            "糖尿病患者の食事指導について教えて",
+          ].join("\n"),
+          buildBackButtonQuickReply(),
+        );
+      }
+      return;
+    }
+
+    // ========================================
+    // 8) 「リスクチェックの使い方」→ リスクチェックモードに入る
+    // ========================================
+    if (trimmed === "リスクチェックの使い方") {
+      // リスクチェックモードを設定
+      await setToolMode(lineUserId, "risk_check");
+
+      if (replyToken) {
+        await replyText(
+          replyToken,
+          [
+            "🛡️ リスクチェックモード",
+            "",
+            "チェックしたい文章をそのまま入力してください。",
+            "医療広告・個人情報・医学的妥当性などの",
+            "リスクを分析します。",
+            "",
+            "📱 左下の「キーボード」アイコンをタップ",
+            "",
+            "【入力例】",
+            "この治療法で必ず治ります",
+          ].join("\n"),
+          buildBackButtonQuickReply(),
+        );
+      }
+      return;
+    }
+
+    // ========================================
+    // 9) ヘルプメッセージ
+    // ========================================
     if (replyToken) {
-      await replyText(replyToken, [
-        "Discord コミュニティへの参加は、",
-        "メールアドレス登録が必要です。",
+      const helpMessage = [
+        "Pocket Defense Tool",
         "",
-        "「特典」と入力するか、",
-        "リッチメニューの「特典GET」をタップしてください。",
-      ].join("\n"));
+        "■ プロンプト整形",
+        "「洗練:」の後に文章を入力",
+        "",
+        "■ リスクチェック",
+        "「check:」の後に文章を入力",
+        "",
+        "■ AI導入情報・お問い合わせ",
+        "下のボタンから選んでください ↓",
+      ].join("\n");
+
+      await replyText(replyToken, helpMessage, buildDiagnosisQuickReply());
     }
-    return;
-  }
-
-  // ========================================
-  // 4) 「お問い合わせ」→ 問い合わせフォーム
-  // ========================================
-  if (trimmed === "お問い合わせ" || trimmed === "問い合わせ") {
-    if (replyToken) {
-      await replyText(replyToken, [
-        "📧 お問い合わせ",
-        "",
-        "ご質問・ご相談は以下のフォームからお願いします。",
-        "",
-        "▼ お問い合わせフォーム",
-        CONTACT_FORM_URL,
-      ].join("\n"));
-    }
-    return;
-  }
-
-  // ========================================
-  // 5) 「サービス一覧」→ サービス選択メニュー
-  // ========================================
-  if (trimmed === "サービス一覧") {
-    if (replyToken) {
-      await replyText(replyToken, [
-        "✨ Cursorvers Edu サービス",
-        "",
-        "【無料】LINE上で使えるツール",
-        "・プロンプト整形",
-        "・リスクチェック",
-        "・AI導入診断",
-        "",
-        "【有料】Library Member ¥2,980/月",
-        "・有料記事の全文閲覧",
-        "・検証済みプロンプト集",
-        "・Master Class への充当可能",
-        "",
-        "▼ 詳細・お申込みはこちら",
-        SERVICES_LP_URL,
-        "",
-        "▼ または下のボタンから選択",
-      ].join("\n"), buildServicesQuickReply());
-    }
-    return;
-  }
-
-  // ========================================
-  // 6) 「サービス詳細」→ LP へのリンク
-  // ========================================
-  if (trimmed === "サービス詳細を見る") {
-    if (replyToken) {
-      await replyText(replyToken, [
-        "📖 サービス詳細ページ",
-        "",
-        "各プランの詳細・料金はこちらでご確認いただけます。",
-        "",
-        "▼ サービス一覧（Web）",
-        SERVICES_LP_URL,
-      ].join("\n"));
-    }
-    return;
-  }
-
-  // ========================================
-  // 7) 「プロンプト整形の使い方」→ プロンプト整形モードに入る
-  // ========================================
-  if (trimmed === "プロンプト整形の使い方") {
-    // プロンプト整形モードを設定
-    await setToolMode(lineUserId, "polish");
-    
-    if (replyToken) {
-      await replyText(replyToken, [
-        "🔧 プロンプト整形モード",
-        "",
-        "整形したい文章をそのまま入力してください。",
-        "普通にAIに聞くより高品質な回答を引き出せる",
-        "構造化プロンプトに変換します。",
-        "",
-        "📱 左下の「キーボード」アイコンをタップ",
-        "",
-        "【入力例】",
-        "糖尿病患者の食事指導について教えて",
-      ].join("\n"), buildBackButtonQuickReply());
-    }
-    return;
-  }
-
-  // ========================================
-  // 8) 「リスクチェックの使い方」→ リスクチェックモードに入る
-  // ========================================
-  if (trimmed === "リスクチェックの使い方") {
-    // リスクチェックモードを設定
-    await setToolMode(lineUserId, "risk_check");
-    
-    if (replyToken) {
-      await replyText(replyToken, [
-        "🛡️ リスクチェックモード",
-        "",
-        "チェックしたい文章をそのまま入力してください。",
-        "医療広告・個人情報・医学的妥当性などの",
-        "リスクを分析します。",
-        "",
-        "📱 左下の「キーボード」アイコンをタップ",
-        "",
-        "【入力例】",
-        "この治療法で必ず治ります",
-      ].join("\n"), buildBackButtonQuickReply());
-    }
-    return;
-  }
-
-  // ========================================
-  // 9) ヘルプメッセージ
-  // ========================================
-  if (replyToken) {
-    const helpMessage = [
-      "Pocket Defense Tool",
-      "",
-      "■ プロンプト整形",
-      "「洗練:」の後に文章を入力",
-      "",
-      "■ リスクチェック",
-      "「check:」の後に文章を入力",
-      "",
-      "■ AI導入情報・お問い合わせ",
-      "下のボタンから選んでください ↓",
-    ].join("\n");
-
-    await replyText(replyToken, helpMessage, buildDiagnosisQuickReply());
-  }
   } catch (err) {
     log.error("handleEvent error", {
       errorMessage: err instanceof Error ? err.message : String(err),
-      stack: err instanceof Error ? err.stack?.split("\n").slice(0, 3).join(" | ") : undefined
+      stack: err instanceof Error
+        ? err.stack?.split("\n").slice(0, 3).join(" | ")
+        : undefined,
     });
   }
 }
@@ -1018,7 +1198,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   try {
     body = JSON.parse(rawBody) as LineWebhookRequestBody;
   } catch (err) {
-    log.error("JSON parse error", { errorMessage: err instanceof Error ? err.message : String(err) });
+    log.error("JSON parse error", {
+      errorMessage: err instanceof Error ? err.message : String(err),
+    });
     return new Response("Bad Request", { status: 400 });
   }
 
@@ -1029,7 +1211,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     await Promise.all(events.map((ev) => handleEvent(ev)));
     log.debug("All events processed", { eventCount: events.length });
   } catch (err) {
-    log.error("Event processing error", { errorMessage: err instanceof Error ? err.message : String(err) });
+    log.error("Event processing error", {
+      errorMessage: err instanceof Error ? err.message : String(err),
+    });
   }
 
   return new Response("OK", { status: 200 });

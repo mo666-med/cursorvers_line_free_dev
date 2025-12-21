@@ -38,13 +38,21 @@ const QUICK_FLOW: DiagnosisFlow = {
   // レイヤー1: 関心領域の大枠
   layer1: {
     text: "関心の領域を選んでください",
-    options: ["現場運営・効率化", "規制・リスク・データ", "プロダクト/研究開発"],
+    options: [
+      "現場運営・効率化",
+      "規制・リスク・データ",
+      "プロダクト/研究開発",
+    ],
   },
 
   // レイヤー2: 診断テーマ（結論を決定）
   layer2: {
     text: "特に知りたいテーマは？",
-    options: ["コスト・投資対効果", "規制・コンプライアンス", "業務効率化・省力化"],
+    options: [
+      "コスト・投資対効果",
+      "規制・コンプライアンス",
+      "業務効率化・省力化",
+    ],
   },
 
   // レイヤー3: 優先度・関心度（提示はするが結論は layer2 ベースで決定）
@@ -66,7 +74,11 @@ const QUICK_FLOW: DiagnosisFlow = {
   // layer2 の回答で記事IDを決定（3本）
   conclusionsByInterest: {
     "コスト・投資対効果": ["clinic_roi_2025", "ai_economics", "why_ai_fails"],
-    "規制・コンプライアンス": ["ehr_3sho2", "state_of_ai_2025", "japan_reboot_2040"],
+    "規制・コンプライアンス": [
+      "ehr_3sho2",
+      "state_of_ai_2025",
+      "japan_reboot_2040",
+    ],
     "業務効率化・省力化": ["automation_n8n", "outreach", "regional_ai"],
   },
 };
@@ -77,7 +89,7 @@ const QUICK_FLOW: DiagnosisFlow = {
 
 const HOSPITAL_FLOW: DiagnosisFlow = {
   totalQuestions: 3,
-  
+
   // レイヤー1: 立場（パーソナライズ）
   layer1: {
     text: "あなたの立場を教えてください",
@@ -181,7 +193,7 @@ const HOSPITAL_FLOW: DiagnosisFlow = {
 
 const SAMD_FLOW: DiagnosisFlow = {
   totalQuestions: 3,
-  
+
   layer1: {
     text: "あなたの役割を教えてください",
     options: [
@@ -231,7 +243,11 @@ const SAMD_FLOW: DiagnosisFlow = {
     "プロトタイプ開発中": ["evals_kpi", "optimal_vs_satisfactory", "xhaim"],
     "臨床試験・治験準備": ["pccp_fda", "10sec_trap", "agent_or_device"],
     "薬事申請・承認取得": ["samd_guide", "pccp_fda", "eu_ai_act"],
-    "市販後・スケール段階": ["paradigm_integration", "ai_inventor", "eu_ai_act"],
+    "市販後・スケール段階": [
+      "paradigm_integration",
+      "ai_inventor",
+      "eu_ai_act",
+    ],
   },
 };
 
@@ -241,7 +257,7 @@ const SAMD_FLOW: DiagnosisFlow = {
 
 const DATA_GOV_FLOW: DiagnosisFlow = {
   totalQuestions: 3,
-  
+
   layer1: {
     text: "あなたの組織は？",
     options: [
@@ -283,9 +299,21 @@ const DATA_GOV_FLOW: DiagnosisFlow = {
 
   conclusionsByInterest: {
     "院内業務の効率化": ["double_helix", "referral_gennai", "enicia_aibtrust"],
-    "研究・二次利用": ["patient_data_revolution", "jdla_contract", "referral_ethics"],
-    "外部連携・共有": ["referral_gennai", "ai_security_subcommittee", "state_ai_policy"],
-    "AI開発・学習": ["jdla_contract", "gafam_battlefield", "patient_data_revolution"],
+    "研究・二次利用": [
+      "patient_data_revolution",
+      "jdla_contract",
+      "referral_ethics",
+    ],
+    "外部連携・共有": [
+      "referral_gennai",
+      "ai_security_subcommittee",
+      "state_ai_policy",
+    ],
+    "AI開発・学習": [
+      "jdla_contract",
+      "gafam_battlefield",
+      "patient_data_revolution",
+    ],
   },
 };
 
@@ -295,7 +323,7 @@ const DATA_GOV_FLOW: DiagnosisFlow = {
 
 const CLINICAL_ASSET_FLOW: DiagnosisFlow = {
   totalQuestions: 3,
-  
+
   layer1: {
     text: "あなたの専門は？",
     options: [
@@ -336,9 +364,17 @@ const CLINICAL_ASSET_FLOW: DiagnosisFlow = {
   } as Record<string, DiagnosisQuestion>,
 
   conclusionsByInterest: {
-    "診断・判断支援": ["g_amie", "heterogeneity_by_design", "sinking_expertise"],
+    "診断・判断支援": [
+      "g_amie",
+      "heterogeneity_by_design",
+      "sinking_expertise",
+    ],
     "文書作成・記録": ["voice_chart", "ocr_memory", "too_smart_ai"],
-    "患者コミュニケーション": ["ai_psy_therapy", "nextgen_psychiatry", "too_smart_ai"],
+    "患者コミュニケーション": [
+      "ai_psy_therapy",
+      "nextgen_psychiatry",
+      "too_smart_ai",
+    ],
     "学習・教育": ["ai_clinical_soul", "ocr_memory", "sinking_expertise"],
   },
 };
@@ -349,7 +385,7 @@ const CLINICAL_ASSET_FLOW: DiagnosisFlow = {
 
 const EDU_FLOW: DiagnosisFlow = {
   totalQuestions: 3,
-  
+
   layer1: {
     text: "あなたの立場は？",
     options: [
@@ -403,7 +439,7 @@ const EDU_FLOW: DiagnosisFlow = {
 
 const NEXTGEN_FLOW: DiagnosisFlow = {
   totalQuestions: 3,
-  
+
   layer1: {
     text: "興味のある技術領域は？",
     options: [
@@ -445,7 +481,11 @@ const NEXTGEN_FLOW: DiagnosisFlow = {
 
   conclusionsByInterest: {
     "診断・画像解析": ["nano_banana", "google_new_dimension", "ms_multi_ai"],
-    "手術・治療支援": ["physical_ai", "incurable_disease", "wh_pediatric_cancer"],
+    "手術・治療支援": [
+      "physical_ai",
+      "incurable_disease",
+      "wh_pediatric_cancer",
+    ],
     "創薬・研究": ["gc_modern_infra", "env_cost", "ms_multi_ai"],
     "ヘルスケア・予防": ["sora2", "nano_banana", "google_new_dimension"],
   },
@@ -466,7 +506,9 @@ const FLOW_MAP: Record<DiagnosisKeyword, DiagnosisFlow> = {
   "次世代AI実装診断": NEXTGEN_FLOW,
 };
 
-export function getFlowForKeyword(keyword: DiagnosisKeyword): DiagnosisFlow | null {
+export function getFlowForKeyword(
+  keyword: DiagnosisKeyword,
+): DiagnosisFlow | null {
   return FLOW_MAP[keyword] ?? null;
 }
 
@@ -474,11 +516,13 @@ export function getFlowForKeyword(keyword: DiagnosisKeyword): DiagnosisFlow | nu
  * 次の質問を取得
  */
 export function getNextQuestion(
-  state: DiagnosisState
+  state: DiagnosisState,
 ): DiagnosisQuestion | null {
   const flow = getFlowForKeyword(state.keyword);
   if (!flow) {
-    log.error("Flow not found for keyword in getNextQuestion", { keyword: state.keyword });
+    log.error("Flow not found for keyword in getNextQuestion", {
+      keyword: state.keyword,
+    });
     return null;
   }
 
@@ -520,7 +564,7 @@ export function getNextQuestion(
 
 /**
  * 結論を取得（layer2 の関心領域に基づく）
- * 
+ *
  * 優先順位:
  * 1. conclusionsByInterest にハードコードされた記事ID
  * 2. タグベースで動的に取得（将来的に記事が増えた場合に自動反映）
@@ -534,7 +578,10 @@ export function getConclusion(state: DiagnosisState): string[] | null {
 
   // 3問すべて回答済みか確認
   if (state.answers.length < flow.totalQuestions) {
-    log.warn("Not enough answers", { answerCount: state.answers.length, required: flow.totalQuestions });
+    log.warn("Not enough answers", {
+      answerCount: state.answers.length,
+      required: flow.totalQuestions,
+    });
     return null;
   }
 
@@ -544,14 +591,14 @@ export function getConclusion(state: DiagnosisState): string[] | null {
     log.error("No interest found in answers", { answers: state.answers });
     return null;
   }
-  
+
   const hardcodedIds = flow.conclusionsByInterest[interest];
-  
+
   // ハードコードされた記事IDがあればそれを返す
   if (hardcodedIds && hardcodedIds.length > 0) {
     return hardcodedIds;
   }
-  
+
   // フォールバック: タグベースで取得を試みる
   // （将来的に conclusionsByInterest を空にして、タグベースに完全移行可能）
   log.debug("No hardcoded articles, using tag-based fallback", { interest });
@@ -589,7 +636,7 @@ export function getTotalQuestions(keyword: DiagnosisKeyword): number {
 export function buildQuestionMessage(
   question: DiagnosisQuestion,
   layer: number,
-  totalQuestions: number = 3
+  totalQuestions: number = 3,
 ): { text: string; quickReply: object } {
   const text = `【質問 ${layer}/${totalQuestions}】\n\n${question.text}`;
 
@@ -624,12 +671,12 @@ export function buildQuestionMessage(
  */
 export function buildConclusionMessage(
   state: DiagnosisState,
-  articles: Array<{ title: string; url?: string }>
+  articles: Array<{ title: string; url?: string }>,
 ): string {
   // 回答のサマリーを作成（関心領域を強調）
   const interest = state.answers[1] ?? "AI活用"; // layer2の回答が主軸
   const detail = state.answers[2] ?? ""; // layer3の回答（具体的な課題）
-  
+
   const lines: string[] = [
     `🎯【${state.keyword}】`,
     "診断完了！",
@@ -637,12 +684,12 @@ export function buildConclusionMessage(
     `📌 あなたの関心`,
     `「${interest}」`,
   ];
-  
+
   // 詳細がある場合のみ表示
   if (detail) {
     lines.push(`└ ${detail}`);
   }
-  
+
   lines.push("");
   lines.push("━━━━━━━━━━━━━━━━━━");
   lines.push("📚 おすすめ記事");
@@ -677,7 +724,7 @@ export function buildDiagnosisStartMessage(keyword: DiagnosisKeyword): {
 
   const question = flow.layer1;
   const totalQ = flow.totalQuestions;
-  
+
   const text = [
     `🔍【${keyword}】`,
     "",
@@ -712,4 +759,3 @@ export function buildDiagnosisStartMessage(keyword: DiagnosisKeyword): {
 
   return { text, quickReply };
 }
-

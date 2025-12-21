@@ -2,11 +2,12 @@
  * LINE Messaging API ヘルパー
  */
 import { withSafetyFooter } from "../../_shared/safety.ts";
-import { createLogger, anonymizeUserId } from "../../_shared/logger.ts";
+import { anonymizeUserId, createLogger } from "../../_shared/logger.ts";
 
 const log = createLogger("line-api");
 
-const LINE_CHANNEL_ACCESS_TOKEN = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN") ?? "";
+const LINE_CHANNEL_ACCESS_TOKEN = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN") ??
+  "";
 const LINE_CHANNEL_SECRET = Deno.env.get("LINE_CHANNEL_SECRET") ?? "";
 
 /** クイックリプライアイテムの型 */
@@ -31,7 +32,7 @@ export interface QuickReply {
  */
 export async function verifyLineSignature(
   req: Request,
-  rawBody: string
+  rawBody: string,
 ): Promise<boolean> {
   if (!LINE_CHANNEL_SECRET) return false;
   const signature = req.headers.get("x-line-signature");
@@ -43,7 +44,7 @@ export async function verifyLineSignature(
     encoder.encode(LINE_CHANNEL_SECRET),
     { name: "HMAC", hash: "SHA-256" },
     false,
-    ["sign"]
+    ["sign"],
   );
 
   const hmac = await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody));
@@ -59,13 +60,16 @@ export async function verifyLineSignature(
 export async function replyText(
   replyToken: string,
   text: string,
-  quickReply?: QuickReply
+  quickReply?: QuickReply,
 ): Promise<void> {
   if (!replyToken) {
     log.warn("replyText: No replyToken provided");
     return;
   }
-  const message: Record<string, unknown> = { type: "text", text: withSafetyFooter(text) };
+  const message: Record<string, unknown> = {
+    type: "text",
+    text: withSafetyFooter(text),
+  };
   if (quickReply) {
     message.quickReply = quickReply;
   }
@@ -89,7 +93,10 @@ export async function replyText(
 /**
  * LINE push（非同期で結果を送る用）
  */
-export async function pushText(lineUserId: string, text: string): Promise<void> {
+export async function pushText(
+  lineUserId: string,
+  text: string,
+): Promise<void> {
   try {
     const res = await fetch("https://api.line.me/v2/bot/message/push", {
       method: "POST",
@@ -108,13 +115,13 @@ export async function pushText(lineUserId: string, text: string): Promise<void> 
       log.error("pushText failed", {
         userId: anonymizeUserId(lineUserId),
         status: res.status,
-        errorBody
+        errorBody,
       });
     }
   } catch (err) {
     log.error("pushText exception", {
       userId: anonymizeUserId(lineUserId),
-      errorMessage: err instanceof Error ? err.message : String(err)
+      errorMessage: err instanceof Error ? err.message : String(err),
     });
   }
 }
@@ -125,7 +132,7 @@ export async function pushText(lineUserId: string, text: string): Promise<void> 
 export async function pushWithQuickReply(
   lineUserId: string,
   text: string,
-  quickReply: QuickReply
+  quickReply: QuickReply,
 ): Promise<void> {
   const message: Record<string, unknown> = {
     type: "text",
@@ -150,7 +157,7 @@ export async function pushWithQuickReply(
     log.error("pushWithQuickReply failed", {
       userId: anonymizeUserId(lineUserId),
       status: res.status,
-      errorBody
+      errorBody,
     });
   }
 }
@@ -160,7 +167,7 @@ export async function pushWithQuickReply(
  */
 export async function replyRaw(
   replyToken: string,
-  message: Record<string, unknown>
+  message: Record<string, unknown>,
 ): Promise<Response> {
   return await fetch("https://api.line.me/v2/bot/message/reply", {
     method: "POST",

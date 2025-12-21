@@ -2,18 +2,18 @@
 // Tests for note-recommendations.ts - Pure function tests (Phase 1)
 
 import {
+  assert,
   assertEquals,
   assertExists,
-  assert,
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import {
-  getRecommendationsForKeyword,
-  getFirstArticle,
+  COURSE_RECOMMENDATIONS,
+  getAllArticles,
   getArticleById,
   getArticlesByIds,
   getArticlesByTag,
-  getAllArticles,
-  COURSE_RECOMMENDATIONS,
+  getFirstArticle,
+  getRecommendationsForKeyword,
 } from "../lib/note-recommendations.ts";
 
 // =======================
@@ -127,7 +127,7 @@ Deno.test("note-recommendations: getArticlesByTag returns articles matching tag"
   for (const article of articles) {
     assert(
       article.tags?.includes("コスト・投資対効果"),
-      `Article ${article.id} should have tag "コスト・投資対効果"`
+      `Article ${article.id} should have tag "コスト・投資対効果"`,
     );
   }
 });
@@ -164,8 +164,12 @@ Deno.test("note-recommendations: getArticlesByTag deduplicates articles", () => 
   // Some articles appear in multiple courses with the same tag
   const articles = getArticlesByTag("業務効率化・省力化", 10);
 
-  const uniqueIds = new Set(articles.map(a => a.id));
-  assertEquals(articles.length, uniqueIds.size, "Should have no duplicate articles");
+  const uniqueIds = new Set(articles.map((a) => a.id));
+  assertEquals(
+    articles.length,
+    uniqueIds.size,
+    "Should have no duplicate articles",
+  );
 });
 
 // =======================
@@ -178,8 +182,12 @@ Deno.test("note-recommendations: getAllArticles returns all unique articles", ()
   assert(articles.length > 0);
 
   // Check for uniqueness
-  const uniqueIds = new Set(articles.map(a => a.id));
-  assertEquals(articles.length, uniqueIds.size, "All articles should be unique");
+  const uniqueIds = new Set(articles.map((a) => a.id));
+  assertEquals(
+    articles.length,
+    uniqueIds.size,
+    "All articles should be unique",
+  );
 
   // Check that all articles have required properties
   for (const article of articles) {
@@ -194,12 +202,12 @@ Deno.test("note-recommendations: getAllArticles includes articles from all cours
   const allArticles = getAllArticles();
 
   // Known article IDs from different courses
-  const hospitalArticle = allArticles.find(a => a.id === "clinic_roi_2025");
-  const samdArticle = allArticles.find(a => a.id === "samd_guide");
-  const dataGovArticle = allArticles.find(a => a.id === "enicia_aibtrust");
-  const clinicalArticle = allArticles.find(a => a.id === "ai_clinical_soul");
-  const eduArticle = allArticles.find(a => a.id === "edu_ai_v2");
-  const nextgenArticle = allArticles.find(a => a.id === "nano_banana");
+  const hospitalArticle = allArticles.find((a) => a.id === "clinic_roi_2025");
+  const samdArticle = allArticles.find((a) => a.id === "samd_guide");
+  const dataGovArticle = allArticles.find((a) => a.id === "enicia_aibtrust");
+  const clinicalArticle = allArticles.find((a) => a.id === "ai_clinical_soul");
+  const eduArticle = allArticles.find((a) => a.id === "edu_ai_v2");
+  const nextgenArticle = allArticles.find((a) => a.id === "nano_banana");
 
   assertExists(hospitalArticle);
   assertExists(samdArticle);
@@ -243,7 +251,10 @@ Deno.test("note-recommendations: Articles with tags have valid tags array", () =
   for (const article of allArticles) {
     if (article.tags) {
       assert(Array.isArray(article.tags));
-      assert(article.tags.length > 0, `Article ${article.id} has empty tags array`);
+      assert(
+        article.tags.length > 0,
+        `Article ${article.id} has empty tags array`,
+      );
 
       for (const tag of article.tags) {
         assert(typeof tag === "string");
@@ -271,7 +282,7 @@ Deno.test("note-recommendations: Tag search returns articles for diagnosis flow 
     const articles = getArticlesByTag(tag, 10);
     assert(
       articles.length > 0,
-      `Should find articles for tag: ${tag}`
+      `Should find articles for tag: ${tag}`,
     );
   }
 });

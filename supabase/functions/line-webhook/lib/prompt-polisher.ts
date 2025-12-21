@@ -7,7 +7,8 @@ const log = createLogger("prompt-polisher");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
 
 // System Prompt: 医療従事者向けプロンプト整形の専門家
-const SYSTEM_PROMPT = `あなたは、医師・医療従事者がAIを最大限活用するための「プロンプトエンジニアリング専門家」です。
+const SYSTEM_PROMPT =
+  `あなたは、医師・医療従事者がAIを最大限活用するための「プロンプトエンジニアリング専門家」です。
 ユーザーの雑なメモを、**そのままChatGPTやClaudeに貼り付ければ専門家レベルの回答が得られる**高品質なプロンプトに変換してください。
 
 ## あなたの価値
@@ -101,7 +102,7 @@ interface PromptPolisherResult {
  * OpenAI API を呼び出して Prompt Polisher を実行
  */
 export async function runPromptPolisher(
-  rawInput: string
+  rawInput: string,
 ): Promise<PromptPolisherResult> {
   if (!OPENAI_API_KEY) {
     return {
@@ -131,17 +132,18 @@ export async function runPromptPolisher(
     if (!response.ok) {
       const errorText = await response.text();
       log.error("OpenAI API error", { status: response.status, errorText });
-      
+
       if (response.status === 429) {
         return {
           success: false,
           error: "現在混み合っています。しばらくしてから再度お試しください。",
         };
       }
-      
+
       return {
         success: false,
-        error: "プロンプト整形中にエラーが発生しました。時間をおいて再度お試しください。",
+        error:
+          "プロンプト整形中にエラーが発生しました。時間をおいて再度お試しください。",
       };
     }
 
@@ -160,7 +162,9 @@ export async function runPromptPolisher(
       polishedPrompt: formatOutput(polishedPrompt),
     };
   } catch (err) {
-    log.error("Unexpected error", { errorMessage: err instanceof Error ? err.message : String(err) });
+    log.error("Unexpected error", {
+      errorMessage: err instanceof Error ? err.message : String(err),
+    });
     return {
       success: false,
       error: "予期せぬエラーが発生しました。時間をおいて再度お試しください。",
@@ -173,16 +177,17 @@ export async function runPromptPolisher(
  */
 function formatOutput(polishedPrompt: string): string {
   const header = "🔧 Prompt Polisher\n\n";
-  const footer = "\n\n---\n💡 このプロンプトをコピーして、お好みのAIに貼り付けてください。";
-  
+  const footer =
+    "\n\n---\n💡 このプロンプトをコピーして、お好みのAIに貼り付けてください。";
+
   // LINE の文字数制限（5000文字）を考慮
   const maxContentLength = 5000 - header.length - footer.length - 100; // 余裕を持たせる
-  
+
   let content = polishedPrompt;
   if (content.length > maxContentLength) {
-    content = content.substring(0, maxContentLength) + "\n\n（長すぎるため省略されました）";
+    content = content.substring(0, maxContentLength) +
+      "\n\n（長すぎるため省略されました）";
   }
-  
+
   return header + content + footer;
 }
-

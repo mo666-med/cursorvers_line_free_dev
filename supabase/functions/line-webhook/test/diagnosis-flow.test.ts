@@ -2,21 +2,21 @@
 // Tests for diagnosis-flow.ts - Pure function tests (Phase 1)
 
 import {
+  assert,
   assertEquals,
   assertExists,
-  assert,
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import {
-  getFlowForKeyword,
-  getNextQuestion,
-  getConclusion,
-  getCurrentOptions,
-  isValidAnswer,
-  getTotalQuestions,
-  buildQuestionMessage,
   buildConclusionMessage,
   buildDiagnosisStartMessage,
+  buildQuestionMessage,
   type DiagnosisState,
+  getConclusion,
+  getCurrentOptions,
+  getFlowForKeyword,
+  getNextQuestion,
+  getTotalQuestions,
+  isValidAnswer,
 } from "../lib/diagnosis-flow.ts";
 
 // =======================
@@ -96,7 +96,11 @@ Deno.test("diagnosis-flow: getNextQuestion returns layer3 question based on laye
   const question = getNextQuestion(state);
   assertExists(question);
   assertEquals(question?.text, "知りたいポイントは？");
-  assertEquals(question?.options, ["初期費用/ROI", "補助金・助成金", "全体像を知りたい"]);
+  assertEquals(question?.options, [
+    "初期費用/ROI",
+    "補助金・助成金",
+    "全体像を知りたい",
+  ]);
 });
 
 Deno.test("diagnosis-flow: getNextQuestion handles branching layer3 for HOSPITAL_FLOW", () => {
@@ -190,7 +194,11 @@ Deno.test("diagnosis-flow: getConclusion handles HOSPITAL_FLOW correctly", () =>
   const state: DiagnosisState = {
     keyword: "病院AIリスク診断",
     layer: 3,
-    answers: ["病院経営者・管理職", "業務効率化・省力化", "文書作成（紹介状等）"],
+    answers: [
+      "病院経営者・管理職",
+      "業務効率化・省力化",
+      "文書作成（紹介状等）",
+    ],
   };
   const conclusion = getConclusion(state);
   assertExists(conclusion);
@@ -255,7 +263,11 @@ Deno.test("diagnosis-flow: buildConclusionMessage handles null URLs", () => {
   const state: DiagnosisState = {
     keyword: "病院AIリスク診断",
     layer: 3,
-    answers: ["病院経営者・管理職", "規制・コンプライアンス", "医療機器該当性（SaMD）"],
+    answers: [
+      "病院経営者・管理職",
+      "規制・コンプライアンス",
+      "医療機器該当性（SaMD）",
+    ],
   };
   const articles = [
     { title: "記事1", url: null },
