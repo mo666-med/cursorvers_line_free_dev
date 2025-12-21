@@ -3,7 +3,6 @@
  */
 import { assertEquals } from "std-assert";
 
-
 Deno.test("discord - Rate Limit Retry Logic", async (t) => {
   await t.step("parseFloat correctly parses Retry-After header", () => {
     const retryAfter = "1.5";
