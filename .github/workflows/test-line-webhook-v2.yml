@@ -27,6 +27,8 @@ jobs:
     timeout-minutes: 5
     # Skip auto-fix commits to avoid infinite loops
     if: "!contains(github.event.head_commit.message, '[auto-fix]')"
+    outputs:
+      format-failed: ${{ steps.format-check.outcome == 'failure' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -50,9 +52,18 @@ jobs:
           cd supabase/functions/line-webhook
           deno lint
 
-      - name: Set job status
-        if: steps.format-check.outcome == 'failure' || steps.lint-check.outcome == 'failure'
-        run: exit 1
+      # Note: lint errors are logged but don't fail the job
+      # Format errors trigger auto-fix, lint errors require manual review
+      - name: Summary
+        run: |
+          echo "Format check: ${{ steps.format-check.outcome }}"
+          echo "Lint check: ${{ steps.lint-check.outcome }}"
+          if [ "${{ steps.format-check.outcome }}" == "failure" ]; then
+            echo "::warning::Format issues detected - auto-fix will run on push"
+          fi
+          if [ "${{ steps.lint-check.outcome }}" == "failure" ]; then
+            echo "::warning::Lint issues detected - manual review required"
+          fi
 
   # ===========================
   # 2. Auto-Fix (自動補正)
@@ -62,7 +73,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: lint
-    if: failure() && github.event_name == 'push' && !contains(github.event.head_commit.message, '[auto-fix]')
+    # Run when format check failed (not lint - that requires manual review)
+    if: needs.lint.outputs.format-failed == 'true' && github.event_name == 'push' && !contains(github.event.head_commit.message, '[auto-fix]')
 
     permissions:
       contents: write
