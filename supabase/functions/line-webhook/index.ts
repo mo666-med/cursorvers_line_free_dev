@@ -512,10 +512,13 @@ async function handleVerificationCode(
 
     // 更新されなかった場合（レースコンディション検出）
     if (!updateResult || updateResult.length === 0) {
-      log.warn("Race condition detected: LINE already linked by another request", {
-        memberId: member.id,
-        lineUserId: lineUserId.slice(-4),
-      });
+      log.warn(
+        "Race condition detected: LINE already linked by another request",
+        {
+          memberId: member.id,
+          lineUserId: lineUserId.slice(-4),
+        },
+      );
       if (replyToken) {
         await replyText(
           replyToken,
