@@ -11,9 +11,42 @@ const DISCORD_BOT_TOKEN = Deno.env.get("DISCORD_BOT_TOKEN") ?? "";
 const DISCORD_GUILD_ID = Deno.env.get("DISCORD_GUILD_ID") ?? "";
 const DISCORD_ROLE_ID = Deno.env.get("DISCORD_ROLE_ID") ?? "";
 
+// Rate Limit リトライ設定
+const MAX_RETRIES = 3;
+const DEFAULT_RETRY_DELAY_MS = 1000;
+
 interface DiscordResult {
   success: boolean;
   error?: string;
+}
+
+/**
+ * Rate Limit対応のfetchラッパー
+ * 429エラー時はRetry-Afterを尊重して自動リトライ
+ */
+async function fetchWithRateLimit(
+  url: string,
+  options: RequestInit,
+  retries: number = MAX_RETRIES,
+): Promise<Response> {
+  const response = await fetch(url, options);
+
+  if (response.status === 429 && retries > 0) {
+    const retryAfterHeader = response.headers.get("Retry-After");
+    const retryAfterMs = retryAfterHeader
+      ? parseFloat(retryAfterHeader) * 1000
+      : DEFAULT_RETRY_DELAY_MS;
+
+    log.warn("Discord rate limited, retrying", {
+      retryAfterMs,
+      retriesLeft: retries - 1,
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
+    return fetchWithRateLimit(url, options, retries - 1);
+  }
+
+  return response;
 }
 
 /**
@@ -31,7 +64,7 @@ export async function createDiscordInvite(
   }
 
   try {
-    const response = await fetch(
+    const response = await fetchWithRateLimit(
       `https://discord.com/api/v10/guilds/${DISCORD_GUILD_ID}/invites`,
       {
         method: "POST",
@@ -48,10 +81,8 @@ export async function createDiscordInvite(
     );
 
     if (!response.ok) {
-      const errorText = await response.text();
       log.error("Failed to create Discord invite", {
         status: response.status,
-        errorText,
       });
       return { success: false, error: `API error: ${response.status}` };
     }
@@ -82,7 +113,7 @@ export async function addDiscordRole(
   }
 
   try {
-    const response = await fetch(
+    const response = await fetchWithRateLimit(
       `https://discord.com/api/v10/guilds/${DISCORD_GUILD_ID}/members/${discordUserId}/roles/${targetRoleId}`,
       {
         method: "PUT",
@@ -92,20 +123,9 @@ export async function addDiscordRole(
       },
     );
 
-    if (response.status === 429) {
-      const retryAfter = response.headers.get("Retry-After");
-      log.warn("Discord rate limited", { retryAfter });
-      return {
-        success: false,
-        error: `Rate limited, retry after ${retryAfter}s`,
-      };
-    }
-
     if (!response.ok) {
-      const errorText = await response.text();
       log.error("Failed to add Discord role", {
         status: response.status,
-        errorText,
         discordUserId: discordUserId.slice(-4),
       });
       return { success: false, error: `API error: ${response.status}` };
@@ -138,7 +158,7 @@ export async function removeDiscordRole(
   }
 
   try {
-    const response = await fetch(
+    const response = await fetchWithRateLimit(
       `https://discord.com/api/v10/guilds/${DISCORD_GUILD_ID}/members/${discordUserId}/roles/${targetRoleId}`,
       {
         method: "DELETE",
@@ -147,15 +167,6 @@ export async function removeDiscordRole(
         },
       },
     );
-
-    if (response.status === 429) {
-      const retryAfter = response.headers.get("Retry-After");
-      log.warn("Discord rate limited", { retryAfter });
-      return {
-        success: false,
-        error: `Rate limited, retry after ${retryAfter}s`,
-      };
-    }
 
     // 404 = ユーザーがサーバーにいない or ロールを持っていない → 成功扱い
     if (response.status === 404) {
@@ -166,10 +177,8 @@ export async function removeDiscordRole(
     }
 
     if (!response.ok) {
-      const errorText = await response.text();
       log.error("Failed to remove Discord role", {
         status: response.status,
-        errorText,
         discordUserId: discordUserId.slice(-4),
       });
       return { success: false, error: `API error: ${response.status}` };
@@ -201,7 +210,7 @@ export async function sendDiscordDM(
 
   try {
     // まずDMチャンネルを作成
-    const channelResponse = await fetch(
+    const channelResponse = await fetchWithRateLimit(
       `https://discord.com/api/v10/users/@me/channels`,
       {
         method: "POST",
@@ -216,10 +225,8 @@ export async function sendDiscordDM(
     );
 
     if (!channelResponse.ok) {
-      const errorText = await channelResponse.text();
       log.error("Failed to create DM channel", {
         status: channelResponse.status,
-        errorText,
       });
       return { success: false, error: `Cannot create DM channel` };
     }
@@ -227,7 +234,7 @@ export async function sendDiscordDM(
     const channel = await channelResponse.json();
 
     // DMを送信
-    const messageResponse = await fetch(
+    const messageResponse = await fetchWithRateLimit(
       `https://discord.com/api/v10/channels/${channel.id}/messages`,
       {
         method: "POST",
@@ -240,10 +247,8 @@ export async function sendDiscordDM(
     );
 
     if (!messageResponse.ok) {
-      const errorText = await messageResponse.text();
       log.error("Failed to send DM", {
         status: messageResponse.status,
-        errorText,
       });
       return { success: false, error: `Cannot send DM` };
     }

@@ -92,12 +92,20 @@ function getDaysSincePurchase(createdAt: string): number {
 }
 
 Deno.serve(async (req) => {
+  // 必須環境変数の検証
+  const CRON_SECRET = Deno.env.get("CRON_SECRET");
+
+  if (!CRON_SECRET) {
+    log.error("CRON_SECRET not configured - refusing to run without auth");
+    return new Response(
+      JSON.stringify({ error: "Server configuration error: CRON_SECRET required" }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
   // 認証チェック（cron job または手動実行）
   const authHeader = req.headers.get("Authorization");
-  const expectedKey = Deno.env.get("CRON_SECRET");
-
-  // CRON_SECRETが設定されている場合は認証必須
-  if (expectedKey && authHeader !== `Bearer ${expectedKey}`) {
+  if (authHeader !== `Bearer ${CRON_SECRET}`) {
     log.warn("Unauthorized access attempt");
     return new Response("Unauthorized", { status: 401 });
   }
@@ -149,11 +157,32 @@ Deno.serve(async (req) => {
       try {
         // 14日以上経過 → Discord招待を直接送信
         if (daysSincePurchase >= REMINDER_DAYS.FINAL) {
+          // 楽観的ロック: まずdiscord_invite_sent=trueに更新（競合防止）
+          const { data: lockResult, error: lockError } = await supabase
+            .from("members")
+            .update({
+              discord_invite_sent: true,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", member.id)
+            .eq("discord_invite_sent", false) // 未送信の場合のみ
+            .select("id");
+
+          if (lockError || !lockResult || lockResult.length === 0) {
+            // 既に他のプロセスが処理中、またはDBエラー
+            log.info("Skipping member (already being processed or locked)", {
+              email: member.email.slice(0, 5) + "***",
+            });
+            continue;
+          }
+
           const discordInvite = await createDiscordInvite();
           if (!discordInvite) {
             log.error("Could not create Discord invite for final fallback", {
               email: member.email.slice(0, 5) + "***",
             });
+            // 招待生成失敗 - discord_invite_sentはtrueのまま（再処理防止）
+            // 管理者がマニュアル対応する必要あり
             stats.errors++;
             continue;
           }
@@ -169,11 +198,10 @@ Deno.serve(async (req) => {
           );
 
           if (result.success) {
-            // Discord招待送信済みとしてマーク
+            // 認証コードをクリア
             await supabase
               .from("members")
               .update({
-                discord_invite_sent: true,
                 verification_code: null,
                 verification_expires_at: null,
                 updated_at: new Date().toISOString(),

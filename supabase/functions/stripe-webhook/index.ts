@@ -89,16 +89,19 @@ async function mergeOrphanLineRecord(
 
   // 有料レコードにline_user_idがない場合、emailがnullの孤児レコードを探す
   // (LINE IDのみで登録された無料会員)
+  // 順序保証: 最も古いレコード（created_at ASC）を採用
   const { data: emailNullOrphans } = await supabase
     .from("members")
     .select("id, line_user_id, tier")
     .is("email", null)
-    .not("line_user_id", "is", null);
+    .not("line_user_id", "is", null)
+    .order("created_at", { ascending: true })
+    .limit(1);
 
   const emailNullOrphanList = emailNullOrphans as OrphanRecord[] | null;
 
   if (emailNullOrphanList && emailNullOrphanList.length > 0) {
-    // 最初の孤児レコードのline_user_idを有料レコードに移行
+    // 最も古い孤児レコードのline_user_idを有料レコードに移行
     const orphan = emailNullOrphanList[0];
     if (orphan.line_user_id) {
       // 有料レコードにline_user_idを設定
@@ -277,6 +280,52 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   );
+
+  // グローバル冪等性チェック: イベントIDで重複処理を防止
+  const { data: existingEvent } = await supabase
+    .from("stripe_events_processed")
+    .select("event_id")
+    .eq("event_id", event.id)
+    .maybeSingle();
+
+  if (existingEvent) {
+    log.info("Event already processed, skipping", {
+      eventId: event.id,
+      eventType: event.type,
+    });
+    return new Response(
+      JSON.stringify({ received: true, skipped: "event_already_processed" }),
+      { headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  // イベントを処理済みとして記録（楽観的ロック）
+  const { error: insertError } = await supabase
+    .from("stripe_events_processed")
+    .insert({
+      event_id: event.id,
+      event_type: event.type,
+      customer_email: null, // 後で更新
+    });
+
+  if (insertError) {
+    // 既に挿入済み（並行処理による競合）の場合はスキップ
+    if (insertError.code === "23505") {
+      // unique_violation
+      log.info("Event insertion conflict, skipping (concurrent processing)", {
+        eventId: event.id,
+      });
+      return new Response(
+        JSON.stringify({ received: true, skipped: "concurrent_conflict" }),
+        { headers: { "Content-Type": "application/json" } },
+      );
+    }
+    // その他のエラーはログして続行（テーブル未作成時など）
+    log.warn("Failed to record event, continuing anyway", {
+      eventId: event.id,
+      error: insertError.message,
+    });
+  }
 
   switch (event.type) {
     case "checkout.session.completed": {
