@@ -1,6 +1,9 @@
 // supabase/functions/line-webhook/lib/constants.ts
 // 共通定数
 
+// Auto-Fix テスト用コメント（このコミット後に自動整形される）
+const   TEST_AUTO_FIX   =    "this has bad formatting"   ;
+
 // Discord コミュニティリンク
 export const DISCORD_INVITE_URL = "https://discord.gg/TkmmX5Z4vx";
 
