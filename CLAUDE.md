@@ -11,7 +11,7 @@ Supabase Edge Functions + GitHub Actions による自動運用システム
 | 項目 | 状態 |
 |-----|------|
 | **lint** | ✅ 0 warnings (clean) |
-| **テスト** | ✅ 181件 pass |
+| **テスト** | ✅ 187件 pass |
 | **CI/CD** | ✅ Auto-Fix + Full Test Suite |
 
 ## 技術スタック
