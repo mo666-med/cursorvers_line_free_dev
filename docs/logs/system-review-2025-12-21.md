@@ -176,7 +176,7 @@ manus-audit-line-daily-brief (Edge Function)
 
 ### Test Results
 
-- Total tests: 169 (+26 from 143)
+- Total tests: 181 (+38 from 143)
 - All passing: YES
 - Lint warnings: 0
 - New test files:
@@ -184,6 +184,8 @@ manus-audit-line-daily-brief (Edge Function)
   - line-daily-brief/message-utils_test.ts
   - discord-bot/validation-utils_test.ts
   - line-register/register-utils_test.ts
+  - line-webhook/webhook-utils_test.ts
+  - _shared/utils_test.ts
 
 ---
 
