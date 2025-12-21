@@ -128,7 +128,8 @@ manus-audit-line-daily-brief (Edge Function)
 
 | Issue | Impact | Estimate |
 |-------|--------|----------|
-| Test coverage 30-40% | Production risk | 20-30h |
+| ~~Test coverage 30-40%~~ | ~~Production risk~~ | ~~20-30h~~ |
+| **RESOLVED**: Tests added (143→169) | Coverage improved | Done |
 
 ### MEDIUM Priority
 
@@ -175,9 +176,14 @@ manus-audit-line-daily-brief (Edge Function)
 
 ### Test Results
 
-- Total tests: 143
+- Total tests: 169 (+26 from 143)
 - All passing: YES
 - Lint warnings: 0
+- New test files:
+  - stripe-webhook/tier-utils_test.ts
+  - line-daily-brief/message-utils_test.ts
+  - discord-bot/validation-utils_test.ts
+  - line-register/register-utils_test.ts
 
 ---
 
@@ -193,8 +199,8 @@ b20d6cc chore: Delete broken workflows
 
 ## Next Actions
 
-1. [ ] Add tests for stripe-webhook, discord-bot, line-daily-brief
-2. [ ] Implement Discord signature verification
+1. [x] Add tests for stripe-webhook, discord-bot, line-daily-brief, line-register ✅
+2. [x] Discord signature verification - already implemented (nacl) ✅
 3. [ ] Consolidate manus-audit-*.yml workflows
 4. [ ] Unify scripts to TypeScript
 
