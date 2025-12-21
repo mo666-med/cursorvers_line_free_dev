@@ -266,7 +266,12 @@ Deno.serve(async (req) => {
 
   // ログをデータベースに保存
   try {
-    const logPayload: any = {
+    const logPayload: {
+      log_level: string;
+      source: string;
+      message: string;
+      details: Record<string, unknown>;
+    } = {
       log_level: existingRecord ? "info" : "info",
       source: "line-register",
       message: existingRecord ? "Member updated" : "Member created",

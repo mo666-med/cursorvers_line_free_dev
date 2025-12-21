@@ -124,7 +124,9 @@ Deno.test("risk-checker: runRiskChecker extracts risk flags correctly", async ()
     assertEquals(result.success, true);
     assertExists(result.riskFlags);
     assertEquals(result.riskFlags?.length, 2);
+    // deno-lint-ignore no-explicit-any
     assert(result.riskFlags?.includes("adv_advertising" as any));
+    // deno-lint-ignore no-explicit-any
     assert(result.riskFlags?.includes("clinical_quality" as any));
   } finally {
     envStub.restore();
@@ -461,6 +463,7 @@ Deno.test("risk-checker: runRiskChecker sends correct API request with JSON mode
     return undefined;
   });
 
+  // deno-lint-ignore no-explicit-any
   let capturedRequest: any = null;
 
   const fetchStub = stub(

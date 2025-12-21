@@ -34,6 +34,7 @@ Deno.test("diagnosis-flow: getFlowForKeyword returns HOSPITAL_FLOW", () => {
 });
 
 Deno.test("diagnosis-flow: getFlowForKeyword returns null for invalid keyword", () => {
+  // deno-lint-ignore no-explicit-any
   const flow = getFlowForKeyword("存在しない診断" as any);
   assertEquals(flow, null);
 });
@@ -53,6 +54,7 @@ Deno.test("diagnosis-flow: getTotalQuestions returns 3 for all flows", () => {
 });
 
 Deno.test("diagnosis-flow: getTotalQuestions returns 3 for invalid keyword", () => {
+  // deno-lint-ignore no-explicit-any
   assertEquals(getTotalQuestions("存在しない診断" as any), 3);
 });
 
@@ -215,6 +217,7 @@ Deno.test("diagnosis-flow: buildQuestionMessage creates correct format", () => {
 
   assertEquals(result.text, "【質問 1/3】\n\nテスト質問");
   assertExists(result.quickReply);
+  // deno-lint-ignore no-explicit-any
   assertEquals((result.quickReply as any).items.length, 3); // 2 options + 1 cancel
 });
 
@@ -225,6 +228,7 @@ Deno.test("diagnosis-flow: buildQuestionMessage truncates long labels", () => {
   };
   const result = buildQuestionMessage(question, 2, 3);
 
+  // deno-lint-ignore no-explicit-any
   const firstOption = (result.quickReply as any).items[0];
   assertEquals(firstOption.action.label.length, 20); // Truncated to "これは20文字を超える非常に..."
   assert(firstOption.action.label.endsWith("..."));
@@ -289,10 +293,12 @@ Deno.test("diagnosis-flow: buildDiagnosisStartMessage creates correct format", (
   assert(result?.text.includes("関心の領域を選んでください"));
 
   assertExists(result?.quickReply);
+  // deno-lint-ignore no-explicit-any
   assertEquals((result?.quickReply as any).items.length, 4); // 3 options + 1 cancel
 });
 
 Deno.test("diagnosis-flow: buildDiagnosisStartMessage returns null for invalid keyword", () => {
+  // deno-lint-ignore no-explicit-any
   const result = buildDiagnosisStartMessage("存在しない診断" as any);
   assertEquals(result, null);
 });
@@ -313,6 +319,7 @@ Deno.test("diagnosis-flow: All 7 flows are accessible", () => {
   ];
 
   for (const keyword of keywords) {
+    // deno-lint-ignore no-explicit-any
     const flow = getFlowForKeyword(keyword as any);
     assertExists(flow, `Flow should exist for keyword: ${keyword}`);
     assertEquals(flow?.totalQuestions, 3);
