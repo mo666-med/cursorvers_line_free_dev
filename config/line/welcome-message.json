@@ -6,20 +6,31 @@
   "_updatedBy": "Claude Code",
   "enabled": true,
   "sendOnlyOnFirstAdd": false,
-  "messages": [
-    {
-      "type": "text",
-      "text": "{友だちの表示名} さん\nはじめまして！医療×AIで発信している\n【Cursorvers】です。\n医療AIガバナンスに関する\n『GEMs\n　= Governance,\n　　Ethics,\n　　Management systems』\nへようこそ！\n\nこちらのLINE公式アカウントでは、\n\n🎁 友だち登録してくださった方限定の無料プレゼント\n⚠️ 医療×AIにおけるTipsや現場で使えるノウハウ\n📊 医療×AIに関するnoteの新着配信\nhttps://note.com/nice_wren7963\n👆 知見を深めるセミナーのご案内\n📚 医療×AIに関するサービスのご紹介\n\nなどを随時発信していきます。\n\nでは早速、メニューから「LINE限定無料プレゼント」を押して、\n特典を受け取ってくださいね。"
-    }
-  ],
+  "current": {
+    "type": "text",
+    "text": "{友だちの表示名} さん\nはじめまして！医療×AIで発信している\n【Cursorvers】です。\n医療AIガバナンスに関する\n『GEMs\n　= Governance,\n　　Ethics,\n　　Management systems』\nへようこそ！\n\nこちらのLINE公式アカウントでは、\n\n🎁 友だち登録してくださった方限定の無料プレゼント\n⚠️ 医療×AIにおけるTipsや現場で使えるノウハウ\n📊 医療×AIに関するnoteの新着配信\nhttps://note.com/nice_wren7963\n👆 知見を深めるセミナーのご案内\n📚 医療×AIに関するサービスのご紹介\n\nなどを随時発信していきます。\n\nでは早速、メニューから「LINE限定無料プレゼント」を押して、\n特典を受け取ってくださいね。",
+    "characterCount": "369/500"
+  },
+  "improved": {
+    "type": "text",
+    "text": "{友だちの表示名} さん、登録ありがとうございます！\n\n医療×AI の最前線から、\n現場で「今すぐ使える」情報をお届けする\n【Cursorvers】です。\n\n━━━━━━━━━━\n🎁 今だけ！登録特典\n━━━━━━━━━━\n▶ 医療AIガバナンス入門ガイド（PDF）\n▶ 現場で使えるプロンプト集\n\n━━━━━━━━━━\n📬 配信コンテンツ\n━━━━━━━━━━\n✅ 医療×AI 実践Tips\n✅ 最新ニュース解説\n✅ セミナー優先案内\n\n▼ 特典を受け取る ▼\nメニュー →「無料プレゼント」\n\n※ 特典は予告なく終了する場合があります",
+    "characterCount": "307/500",
+    "improvements": [
+      "感謝から始めて好印象を与える",
+      "「今すぐ使える」で即効性を強調",
+      "罫線で視認性向上",
+      "特典内容を具体化",
+      "緊急性を追加（予告なく終了）",
+      "CTAを明確に"
+    ]
+  },
   "notes": {
-    "characterCount": "369/500",
     "placeholders": ["{友だちの表示名}"],
     "howToUpdate": [
       "1. LINE Official Account Manager にログイン",
       "2. 応答設定 > あいさつメッセージ を開く",
-      "3. メッセージ内容をこのファイルに転記",
-      "4. _lastUpdated と _updatedBy を更新"
+      "3. improved.text の内容をコピー＆ペースト",
+      "4. プレビューで確認後「変更を保存」"
     ],
     "managerUrl": "https://manager.line.biz/account/@529ybhfo/autoresponse/welcome"
   }

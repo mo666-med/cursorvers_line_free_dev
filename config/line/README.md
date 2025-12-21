@@ -8,32 +8,68 @@ LINE Official Account Manager の設定をバージョン管理するための�
 |---------|------|
 | `welcome-message.json` | あいさつメッセージ設定 |
 
-## 設定の取得方法
+## ウェルカムメッセージ
 
-### 方法1: 手動取得
+### 現在のメッセージ vs 改善版
 
-1. [LINE Official Account Manager](https://manager.line.biz/account/@529ybhfo) にログイン
+`welcome-message.json` には2つのバージョンが含まれています：
+
+| キー | 説明 |
+|-----|------|
+| `current` | LINE Manager に設定されている現在のメッセージ |
+| `improved` | 改善版（より高いコンバージョン率を目指す） |
+
+### 改善版の特徴
+
+- 感謝から始めて好印象を与える
+- 「今すぐ使える」で即効性を強調
+- 罫線で視認性向上
+- 特典内容を具体化
+- 緊急性を追加（予告なく終了）
+- CTAを明確に
+
+### LINE Manager への反映手順
+
+1. [LINE Official Account Manager](https://manager.line.biz/account/@529ybhfo/autoresponse/welcome) にログイン
 2. 応答設定 > あいさつメッセージ を開く
-3. メッセージ内容を `welcome-message.json` に転記
-4. `_lastUpdated` と `_updatedBy` を更新してコミット
+3. `welcome-message.json` の `improved.text` の内容をコピー
+4. プレビューで確認後「変更を保存」
 
-### 方法2: Manus API 経由
+## 設定の自動取得（Manus API）
+
+`scripts/fetch-line-settings.js` を使用して Manus API 経由で設定を取得できます。
+
+### 使用方法
 
 ```bash
-# Manus タスクを作成して設定を取得
-curl -X POST "https://api.manus.ai/v1/tasks" \
-  -H "Content-Type: application/json" \
-  -H "API_KEY: $MANUS_API_KEY" \
-  -d '{
-    "prompt": "LINE Official Account Manager (https://manager.line.biz/account/@529ybhfo/autoresponse/welcome) にログインし、あいさつメッセージの設定内容をJSON形式で取得してください。",
-    "agentProfile": "manus-1.6",
-    "taskMode": "agent",
-    "locale": "ja"
-  }'
+# ウェルカムメッセージ設定を取得
+MANUS_API_KEY=xxx node scripts/fetch-line-settings.js welcome-message
+
+# リッチメニュー設定を取得
+MANUS_API_KEY=xxx node scripts/fetch-line-settings.js rich-menu
+
+# 自動応答設定を取得
+MANUS_API_KEY=xxx node scripts/fetch-line-settings.js auto-response
 ```
 
-## 設定変更時の注意
+### 対応する設定タイプ
 
-- LINE Manager での変更後は、このファイルも必ず更新してください
-- 変更履歴はGitコミットログで管理されます
-- 本番反映前にPRでレビューを受けることを推奨します
+| タイプ | 説明 | LINE Manager URL |
+|-------|------|-----------------|
+| `welcome-message` | あいさつメッセージ | `/autoresponse/welcome` |
+| `rich-menu` | リッチメニュー | `/richmenu` |
+| `auto-response` | 自動応答 | `/autoresponse` |
+
+## 環境変数
+
+| 変数名 | 説明 | デフォルト値 |
+|-------|------|-------------|
+| `MANUS_API_KEY` | Manus API キー | (必須) |
+| `MANUS_BASE_URL` | Manus API URL | `https://api.manus.ai` |
+| `LINE_ACCOUNT_ID` | LINE アカウントID | `@529ybhfo` |
+
+## 変更履歴
+
+| 日付 | 変更内容 |
+|-----|---------|
+| 2025-12-21 | 初版作成、改善版メッセージ追加 |
