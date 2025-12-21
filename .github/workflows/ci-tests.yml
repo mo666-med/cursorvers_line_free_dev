@@ -80,7 +80,7 @@ jobs:
       - name: Check Format
         run: |
           cd supabase/functions
-          deno fmt --check
+          deno fmt --check --ext=ts
 
       - name: Format Summary
         if: always()
