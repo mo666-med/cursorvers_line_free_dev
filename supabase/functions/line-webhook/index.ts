@@ -482,8 +482,8 @@ async function handleVerificationCode(
       return;
     }
 
-    // LINE紐付けを実行
-    const { error: updateError } = await supabase
+    // LINE紐付けを実行（楽観的ロック: line_user_idがnullの場合のみ更新）
+    const { data: updateResult, error: updateError } = await supabase
       .from("members")
       .update({
         line_user_id: lineUserId,
@@ -492,7 +492,9 @@ async function handleVerificationCode(
         discord_invite_sent: true,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", member.id);
+      .eq("id", member.id)
+      .is("line_user_id", null) // 楽観的ロック: 未紐付けの場合のみ更新
+      .select("id");
 
     if (updateError) {
       log.error("Failed to link LINE user", {
@@ -503,6 +505,26 @@ async function handleVerificationCode(
         await replyText(
           replyToken,
           "エラーが発生しました。もう一度お試しください。",
+        );
+      }
+      return;
+    }
+
+    // 更新されなかった場合（レースコンディション検出）
+    if (!updateResult || updateResult.length === 0) {
+      log.warn("Race condition detected: LINE already linked by another request", {
+        memberId: member.id,
+        lineUserId: lineUserId.slice(-4),
+      });
+      if (replyToken) {
+        await replyText(
+          replyToken,
+          [
+            "⚠️ このコードは既に使用されています",
+            "",
+            "別のデバイスで認証済みの可能性があります。",
+            "問題がある場合はサポートまでお問い合わせください。",
+          ].join("\n"),
         );
       }
       return;

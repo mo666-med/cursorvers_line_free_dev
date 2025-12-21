@@ -293,6 +293,31 @@ Deno.serve(async (req) => {
 
       // Payment Linkからの決済完了のみ処理（payment_statusがpaidの場合）
       if (customerEmail && paymentStatus === "paid") {
+        // 冪等性チェック: 既にこのセッションで処理済みかどうか確認
+        const { data: existingMember } = await supabase
+          .from("members")
+          .select(
+            "id, line_user_id, discord_invite_sent, verification_code, verification_expires_at, stripe_customer_id",
+          )
+          .eq("email", customerEmail)
+          .maybeSingle();
+
+        // 既に同じstripe_customer_idで処理済みの場合はスキップ
+        if (
+          existingMember?.stripe_customer_id === session.customer &&
+          existingMember?.discord_invite_sent === true
+        ) {
+          log.info("Idempotency check: Already processed this session", {
+            email: customerEmail.slice(0, 5) + "***",
+            sessionId: session.id,
+          });
+          return new Response(
+            JSON.stringify({ received: true, skipped: "already_processed" }),
+            {
+              headers: { "Content-Type": "application/json" },
+            },
+          );
+        }
         // サブスクリプション情報を取得
         const subscriptionId = session.subscription as string | null;
         let subscriptionStatus = "active";
@@ -337,9 +362,35 @@ Deno.serve(async (req) => {
           paymentLinkId,
         );
 
-        // 認証コード生成（LINE未登録時用）
-        const verificationCode = generateVerificationCode();
-        const verificationExpiresAt = getCodeExpiryDate().toISOString();
+        // 認証コード生成（既存の有効なコードがある場合は再利用）
+        let verificationCode: string | null = null;
+        let verificationExpiresAt: string | null = null;
+
+        if (
+          existingMember?.verification_code &&
+          existingMember?.verification_expires_at
+        ) {
+          // 既存コードの有効期限を確認
+          const expiresAt = new Date(existingMember.verification_expires_at);
+          if (expiresAt > new Date()) {
+            // 有効なコードが存在 → 再利用
+            verificationCode = existingMember.verification_code;
+            verificationExpiresAt = existingMember.verification_expires_at;
+            log.info("Reusing existing verification code", {
+              email: customerEmail.slice(0, 5) + "***",
+              expiresAt: verificationExpiresAt,
+            });
+          }
+        }
+
+        // 既存の有効なコードがない場合のみ新規生成
+        if (!verificationCode) {
+          verificationCode = generateVerificationCode();
+          verificationExpiresAt = getCodeExpiryDate().toISOString();
+          log.info("Generated new verification code", {
+            email: customerEmail.slice(0, 5) + "***",
+          });
+        }
 
         const { error } = await supabase
           .from("members")
