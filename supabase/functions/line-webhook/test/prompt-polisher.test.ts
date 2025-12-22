@@ -247,18 +247,33 @@ Deno.test("prompt-polisher: runPromptPolisher truncates long output to fit LINE 
 // Test: API request structure
 // =======================
 
+// OpenAI API リクエストの型定義
+interface OpenAIMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+interface OpenAIRequest {
+  model: string;
+  messages: OpenAIMessage[];
+  max_tokens?: number;
+  temperature?: number;
+}
+
+interface CapturedRequest {
+  url: string;
+  method?: string;
+  headers?: HeadersInit;
+  body: OpenAIRequest;
+}
+
 Deno.test("prompt-polisher: runPromptPolisher sends correct API request", async () => {
   const envStub = stub(Deno.env, "get", (key: string) => {
     if (key === "OPENAI_API_KEY") return "test-api-key-123";
     return undefined;
   });
 
-  let capturedRequest: {
-    url: string;
-    method?: string;
-    headers?: HeadersInit;
-    body?: unknown;
-  } | null = null;
+  let capturedRequest: CapturedRequest | null = null;
 
   const fetchStub = stub(
     globalThis,
@@ -270,7 +285,7 @@ Deno.test("prompt-polisher: runPromptPolisher sends correct API request", async 
           url: url.toString(),
           method: init.method,
           headers: init.headers,
-          body: JSON.parse(init.body as string),
+          body: JSON.parse(init.body as string) as OpenAIRequest,
         };
       }
 
@@ -288,23 +303,24 @@ Deno.test("prompt-polisher: runPromptPolisher sends correct API request", async 
   try {
     await runPromptPolisher("診断について教えて");
 
-    // Verify request was captured
-    const req = capturedRequest!;
-    const body = req.body as Record<string, unknown>;
-    const messages = body.messages as Array<Record<string, unknown>>;
+    // 明示的なナローイング + ローカル変数への代入でTypeScriptに型を伝える
+    if (capturedRequest === null) {
+      throw new Error("Expected fetch to be called with OpenAI API request");
+    }
+    const req: CapturedRequest = capturedRequest;
 
-    // Verify request structure
+    // Verify request structure (req is guaranteed to be CapturedRequest)
     assertEquals(
       req.url,
       "https://api.openai.com/v1/chat/completions",
     );
     assertEquals(req.method, "POST");
-    assertEquals(body.model, "gpt-4o");
-    assertEquals(messages.length, 2);
-    assertEquals(messages[0].role, "system");
-    assertEquals(messages[1].role, "user");
+    assertEquals(req.body.model, "gpt-4o");
+    assertEquals(req.body.messages.length, 2);
+    assertEquals(req.body.messages[0].role, "system");
+    assertEquals(req.body.messages[1].role, "user");
     assertEquals(
-      messages[1].content,
+      req.body.messages[1].content,
       "診断について教えて",
     );
   } finally {

@@ -33,8 +33,11 @@ Deno.test("note-recommendations - COURSE_RECOMMENDATIONS structure", async (t) =
         assertEquals(article.id.length > 0, true);
         assertEquals(typeof article.title, "string");
         assertEquals(article.title.length > 0, true);
-        assertEquals(typeof article.url, "string");
-        assertEquals(article.url!.startsWith("https://"), true);
+        // 適切なナローイング: if文で型を確定させる
+        if (typeof article.url !== "string") {
+          throw new Error(`Expected article.url to be string, got ${typeof article.url}`);
+        }
+        assertEquals(article.url.startsWith("https://"), true);
       }
     }
   });
@@ -213,8 +216,11 @@ Deno.test("note-recommendations - getAllArticles", async (t) => {
     for (const article of articles) {
       assertEquals(typeof article.id, "string");
       assertEquals(typeof article.title, "string");
-      assertEquals(typeof article.url, "string");
-      assertEquals(article.url!.startsWith("https://note.com/"), true);
+      // 適切なナローイング: if文で型を確定させる
+      if (typeof article.url !== "string") {
+        throw new Error(`Expected article.url to be string for article ${article.id}`);
+      }
+      assertEquals(article.url.startsWith("https://note.com/"), true);
     }
   });
 });

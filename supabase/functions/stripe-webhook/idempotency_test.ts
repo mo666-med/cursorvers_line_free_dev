@@ -3,6 +3,7 @@
  * イベント重複処理防止ロジックのテスト
  */
 import { assertEquals } from "std-assert";
+import { determineStatus } from "./tier-utils.ts";
 
 Deno.test("idempotency - Event ID format", async (t) => {
   await t.step("Stripe event ID starts with evt_", () => {
@@ -208,22 +209,25 @@ Deno.test("idempotency - Orphan record handling", async (t) => {
   });
 });
 
-Deno.test("idempotency - Subscription status handling", async (t) => {
-  await t.step("canceled status triggers role removal", () => {
-    const status = "canceled";
-    const shouldRemoveRole = status === "canceled";
-    assertEquals(shouldRemoveRole, true);
+Deno.test("idempotency - Subscription status handling (using determineStatus)", async (t) => {
+  await t.step("canceled status returns inactive", () => {
+    // 実際のビジネスロジック関数をテスト
+    assertEquals(determineStatus("canceled"), "inactive");
   });
 
-  await t.step("active status does not trigger role removal", () => {
-    const status: string = "active";
-    const shouldRemoveRole = status === "canceled";
-    assertEquals(shouldRemoveRole, false);
+  await t.step("active status returns active", () => {
+    assertEquals(determineStatus("active"), "active");
   });
 
-  await t.step("past_due status does not trigger role removal", () => {
-    const status: string = "past_due";
-    const shouldRemoveRole = status === "canceled";
-    assertEquals(shouldRemoveRole, false);
+  await t.step("past_due status returns active (still has access)", () => {
+    assertEquals(determineStatus("past_due"), "active");
+  });
+
+  await t.step("trialing status returns active", () => {
+    assertEquals(determineStatus("trialing"), "active");
+  });
+
+  await t.step("unpaid status returns active (grace period)", () => {
+    assertEquals(determineStatus("unpaid"), "active");
   });
 });
