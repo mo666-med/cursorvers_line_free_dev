@@ -270,7 +270,7 @@ Deno.test("diagnosis-flow: buildConclusionMessage handles null URLs", () => {
     ],
   };
   const articles = [
-    { title: "記事1", url: null },
+    { title: "記事1", url: undefined },
   ];
 
   const message = buildConclusionMessage(state, articles);

@@ -29,7 +29,7 @@ Deno.test("discord - Rate Limit Retry Logic", async (t) => {
 
 Deno.test("discord - DiscordResult interface", async (t) => {
   await t.step("success result structure", () => {
-    const result = { success: true };
+    const result: { success: boolean; error?: string } = { success: true };
     assertEquals(result.success, true);
     assertEquals(result.error, undefined);
   });
@@ -129,7 +129,7 @@ Deno.test("discord - Response status handling", async (t) => {
   });
 
   await t.step("403 Forbidden is an error", () => {
-    const status = 403;
+    const status: number = 403;
     const isError = status >= 400 && status !== 404 && status !== 429;
     assertEquals(isError, true);
   });

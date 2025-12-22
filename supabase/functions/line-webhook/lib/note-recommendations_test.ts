@@ -34,7 +34,7 @@ Deno.test("note-recommendations - COURSE_RECOMMENDATIONS structure", async (t) =
         assertEquals(typeof article.title, "string");
         assertEquals(article.title.length > 0, true);
         assertEquals(typeof article.url, "string");
-        assertEquals(article.url.startsWith("https://"), true);
+        assertEquals(article.url!.startsWith("https://"), true);
       }
     }
   });
@@ -214,7 +214,7 @@ Deno.test("note-recommendations - getAllArticles", async (t) => {
       assertEquals(typeof article.id, "string");
       assertEquals(typeof article.title, "string");
       assertEquals(typeof article.url, "string");
-      assertEquals(article.url.startsWith("https://note.com/"), true);
+      assertEquals(article.url!.startsWith("https://note.com/"), true);
     }
   });
 });

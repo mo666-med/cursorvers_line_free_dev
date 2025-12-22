@@ -127,7 +127,7 @@ Deno.test("idempotency - Response format for skipped events", async (t) => {
   });
 
   await t.step("normal success response", () => {
-    const response = { received: true };
+    const response: { received: boolean; skipped?: string } = { received: true };
     assertEquals(response.received, true);
     assertEquals(response.skipped, undefined);
   });
@@ -216,13 +216,13 @@ Deno.test("idempotency - Subscription status handling", async (t) => {
   });
 
   await t.step("active status does not trigger role removal", () => {
-    const status = "active";
+    const status: string = "active";
     const shouldRemoveRole = status === "canceled";
     assertEquals(shouldRemoveRole, false);
   });
 
   await t.step("past_due status does not trigger role removal", () => {
-    const status = "past_due";
+    const status: string = "past_due";
     const shouldRemoveRole = status === "canceled";
     assertEquals(shouldRemoveRole, false);
   });

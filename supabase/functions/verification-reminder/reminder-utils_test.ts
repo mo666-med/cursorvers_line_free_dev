@@ -246,7 +246,7 @@ Deno.test("reminder-utils - Tier name conversion", async (t) => {
   });
 
   await t.step("library tier displays as Library Member", () => {
-    const tier = "library";
+    const tier: string = "library";
     const tierName = tier === "master" ? "Master Class" : "Library Member";
     assertEquals(tierName, "Library Member");
   });

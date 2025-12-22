@@ -288,18 +288,23 @@ Deno.test("prompt-polisher: runPromptPolisher sends correct API request", async 
   try {
     await runPromptPolisher("診断について教えて");
 
+    // Verify request was captured
+    const req = capturedRequest!;
+    const body = req.body as Record<string, unknown>;
+    const messages = body.messages as Array<Record<string, unknown>>;
+
     // Verify request structure
     assertEquals(
-      capturedRequest.url,
+      req.url,
       "https://api.openai.com/v1/chat/completions",
     );
-    assertEquals(capturedRequest.method, "POST");
-    assertEquals(capturedRequest.body.model, "gpt-4o");
-    assertEquals(capturedRequest.body.messages.length, 2);
-    assertEquals(capturedRequest.body.messages[0].role, "system");
-    assertEquals(capturedRequest.body.messages[1].role, "user");
+    assertEquals(req.method, "POST");
+    assertEquals(body.model, "gpt-4o");
+    assertEquals(messages.length, 2);
+    assertEquals(messages[0].role, "system");
+    assertEquals(messages[1].role, "user");
     assertEquals(
-      capturedRequest.body.messages[1].content,
+      messages[1].content,
       "診断について教えて",
     );
   } finally {
