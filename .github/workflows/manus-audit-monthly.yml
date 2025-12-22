@@ -1,24 +1,25 @@
 # .github/workflows/manus-audit-monthly.yml
-# 月次監査: データベース健全性チェック + メンテナンス
+# 月次盺柹: DBメンテナンス(アーカイブ等)
 
 name: Manus Audit (Monthly)
 
 on:
   schedule:
-    # 毎月1日 10:00 JST (01:00 UTC)
-    - cron: '0 1 1 * *'
+    # 毎月1日 03:00 JST (18:00 UTC 前日)
+    - cron: '0 18 1 * *'
   workflow_dispatch:
     # 手動実行も可能
 
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Run monthly audit and maintenance
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           MANUS_AUDIT_API_KEY: ${{ secrets.MANUS_AUDIT_API_KEY }}
         run: |
           echo "🔍 月次監査・メンテナンスを実行中..."
@@ -26,6 +27,7 @@ jobs:
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             "${SUPABASE_URL}/functions/v1/manus-audit-line-daily-brief?mode=monthly" \
             -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
             -H "X-API-Key: ${MANUS_AUDIT_API_KEY}")
           
           HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
@@ -43,12 +45,6 @@ jobs:
           ALL_PASSED=$(echo "$BODY" | jq -r '.summary.allPassed // false')
           WARNING_COUNT=$(echo "$BODY" | jq -r '.summary.warningCount // 0')
           ERROR_COUNT=$(echo "$BODY" | jq -r '.summary.errorCount // 0')
-          ARCHIVED_BROADCASTS=$(echo "$BODY" | jq -r '.maintenance.archivedBroadcasts // 0')
-          ARCHIVED_CARDS=$(echo "$BODY" | jq -r '.maintenance.archivedCards // 0')
-          
-          echo "📊 メンテナンス結果:"
-          echo "  - アーカイブ対象の配信履歴: ${ARCHIVED_BROADCASTS}件"
-          echo "  - アーカイブしたカード: ${ARCHIVED_CARDS}件"
           
           if [ "$ALL_PASSED" = "true" ]; then
             echo "✅ 監査完了: 全て正常"
@@ -70,5 +66,3 @@ jobs:
               -H "Content-Type: application/json" \
               -d '{"content": "🚨 **Manus月次監査が失敗しました**\nhttps://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}'
           fi
-
-
