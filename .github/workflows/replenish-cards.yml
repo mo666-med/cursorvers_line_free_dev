@@ -95,8 +95,9 @@ jobs:
       # 失敗時: Manus分析 → GitHub Issue作成
       # ========================================
       - name: Request Manus analysis on failure
-        if: failure()
+        if: always() && steps.generate.outcome == 'failure'
         id: manus
+        continue-on-error: true
         env:
           MANUS_API_KEY: ${{ secrets.MANUS_API_KEY }}
         run: |
@@ -145,7 +146,7 @@ jobs:
           fi
 
       - name: Create GitHub Issue on failure
-        if: failure()
+        if: always() && steps.generate.outcome == 'failure'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -183,7 +184,7 @@ jobs:
             --label "bug,auto-generated"
 
       - name: Notify Discord on failure
-        if: failure()
+        if: always() && steps.generate.outcome == 'failure'
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_ADMIN_WEBHOOK_URL }}
         run: |
