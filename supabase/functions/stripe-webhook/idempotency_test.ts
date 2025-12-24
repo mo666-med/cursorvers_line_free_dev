@@ -128,7 +128,9 @@ Deno.test("idempotency - Response format for skipped events", async (t) => {
   });
 
   await t.step("normal success response", () => {
-    const response: { received: boolean; skipped?: string } = { received: true };
+    const response: { received: boolean; skipped?: string } = {
+      received: true,
+    };
     assertEquals(response.received, true);
     assertEquals(response.skipped, undefined);
   });

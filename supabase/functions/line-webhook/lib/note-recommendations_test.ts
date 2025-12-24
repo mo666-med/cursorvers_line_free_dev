@@ -35,7 +35,9 @@ Deno.test("note-recommendations - COURSE_RECOMMENDATIONS structure", async (t) =
         assertEquals(article.title.length > 0, true);
         // 適切なナローイング: if文で型を確定させる
         if (typeof article.url !== "string") {
-          throw new Error(`Expected article.url to be string, got ${typeof article.url}`);
+          throw new Error(
+            `Expected article.url to be string, got ${typeof article.url}`,
+          );
         }
         assertEquals(article.url.startsWith("https://"), true);
       }
@@ -218,7 +220,9 @@ Deno.test("note-recommendations - getAllArticles", async (t) => {
       assertEquals(typeof article.title, "string");
       // 適切なナローイング: if文で型を確定させる
       if (typeof article.url !== "string") {
-        throw new Error(`Expected article.url to be string for article ${article.id}`);
+        throw new Error(
+          `Expected article.url to be string for article ${article.id}`,
+        );
       }
       assertEquals(article.url.startsWith("https://note.com/"), true);
     }
