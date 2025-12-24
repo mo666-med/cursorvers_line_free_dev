@@ -1,5 +1,6 @@
 # .github/workflows/replenish-cards.yml
 # カード在庫不足時にAIで自動補充
+# 失敗時: リトライ → Manus分析 → GitHub Issue作成
 
 name: Replenish Cards (AI)
 
@@ -24,7 +25,6 @@ on:
         options:
           - 'false'
           - 'true'
-  # 他のワークフローから呼び出し可能
   workflow_call:
     inputs:
       themes:
@@ -35,10 +35,14 @@ on:
         type: string
         default: '20'
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   generate:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -49,25 +53,31 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Generate and insert cards
+      - name: Generate and insert cards (with retry)
+        id: generate
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 3
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: |
+            cd scripts/generate-cards
+
+            THEMES="${{ inputs.themes || 'tax,career,general' }}"
+            COUNT="${{ inputs.count || '20' }}"
+            DRY_RUN="${{ inputs.dry_run || 'false' }}"
+
+            OPTS="--themes=${THEMES} --count=${COUNT}"
+            if [ "$DRY_RUN" = "true" ]; then
+              OPTS="$OPTS --dry-run"
+            fi
+
+            echo "Running: deno run main.ts $OPTS"
+            deno run --allow-env --allow-net --no-lock main.ts $OPTS
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        run: |
-          cd scripts/generate-cards
-
-          THEMES="${{ inputs.themes || 'tax,career,general' }}"
-          COUNT="${{ inputs.count || '20' }}"
-          DRY_RUN="${{ inputs.dry_run || 'false' }}"
-
-          OPTS="--themes=${THEMES} --count=${COUNT}"
-          if [ "$DRY_RUN" = "true" ]; then
-            OPTS="$OPTS --dry-run"
-          fi
-
-          echo "Running: deno run main.ts $OPTS"
-          deno run --allow-env --allow-net --no-lock main.ts $OPTS
 
       - name: Notify Discord on success
         if: success() && inputs.dry_run != 'true'
@@ -81,6 +91,97 @@ jobs:
               -d "{\"embeds\": [{\"title\": \"✅ AI カード自動補充完了\", \"color\": 5763719, \"fields\": [{\"name\": \"テーマ\", \"value\": \"${{ inputs.themes || 'tax,career,general' }}\", \"inline\": true}, {\"name\": \"生成数/テーマ\", \"value\": \"${{ inputs.count || '20' }}\", \"inline\": true}, {\"name\": \"日時\", \"value\": \"${TIMESTAMP}\", \"inline\": true}], \"footer\": {\"text\": \"AI Card Generator\"}}]}"
           fi
 
+      # ========================================
+      # 失敗時: Manus分析 → GitHub Issue作成
+      # ========================================
+      - name: Request Manus analysis on failure
+        if: failure()
+        id: manus
+        env:
+          MANUS_API_KEY: ${{ secrets.MANUS_API_KEY }}
+        run: |
+          if [ -z "$MANUS_API_KEY" ]; then
+            echo "MANUS_API_KEY not set, skipping Manus analysis"
+            echo "manus_triggered=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # エラー分析プロンプト（実行は求めない）
+          PROMPT=$(cat <<'PROMPT_EOF'
+          # AIカード自動補充エラー分析
+
+          GitHub Actions ワークフロー「Replenish Cards (AI)」が3回リトライ後も失敗しました。
+
+          ## エラー情報
+          - リポジトリ: ${{ github.repository }}
+          - ワークフロー実行: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          - テーマ: ${{ inputs.themes || 'tax,career,general' }}
+          - 生成数: ${{ inputs.count || '20' }}
+
+          ## 依頼事項（分析のみ）
+          1. ワークフローログを確認し、エラーの根本原因を特定してください
+          2. 考えられる原因をリストアップしてください
+          3. 推奨される修正方法を提案してください
+
+          **注意**: 実行やコード変更は行わないでください。分析結果のみを報告してください。
+          PROMPT_EOF
+          )
+
+          RESPONSE=$(curl -s -X POST "https://api.manus.ai/v1/tasks" \
+            -H "Content-Type: application/json" \
+            -H "API_KEY: $MANUS_API_KEY" \
+            -d "{\"prompt\": $(echo "$PROMPT" | jq -Rs .), \"agentProfile\": \"manus-1.6-lite\", \"taskMode\": \"chat\", \"locale\": \"ja\"}")
+
+          TASK_ID=$(echo "$RESPONSE" | jq -r '.task_id // empty')
+          TASK_URL=$(echo "$RESPONSE" | jq -r '.task_url // empty')
+
+          if [ -n "$TASK_ID" ]; then
+            echo "Manus task created: $TASK_URL"
+            echo "manus_triggered=true" >> $GITHUB_OUTPUT
+            echo "task_url=$TASK_URL" >> $GITHUB_OUTPUT
+          else
+            echo "Failed to create Manus task"
+            echo "manus_triggered=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TIMESTAMP=$(TZ=Asia/Tokyo date +"%Y-%m-%d %H:%M JST")
+          MANUS_URL="${{ steps.manus.outputs.task_url }}"
+
+          BODY=$(cat <<EOF
+          ## 概要
+          AIカード自動補充ワークフローが3回リトライ後も失敗しました。
+
+          ## エラー情報
+          - **日時**: ${TIMESTAMP}
+          - **テーマ**: ${{ inputs.themes || 'tax,career,general' }}
+          - **生成数/テーマ**: ${{ inputs.count || '20' }}
+          - **ワークフロー実行**: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          ## Manus分析
+          ${MANUS_URL:+- **分析タスク**: $MANUS_URL}
+          ${MANUS_URL:-Manus API未設定のため分析なし}
+
+          ## 対応手順
+          1. ワークフローログを確認
+          2. エラー原因を特定
+          3. 修正後、手動でワークフローを再実行
+
+          \`\`\`bash
+          gh workflow run replenish-cards.yml -f themes="${{ inputs.themes || 'tax,career,general' }}" -f count="${{ inputs.count || '20' }}"
+          \`\`\`
+          EOF
+          )
+
+          gh issue create \
+            --title "🚨 AIカード自動補充失敗 (${TIMESTAMP})" \
+            --body "$BODY" \
+            --label "bug,auto-generated"
+
       - name: Notify Discord on failure
         if: failure()
         env:
@@ -88,7 +189,13 @@ jobs:
         run: |
           if [ -n "$DISCORD_WEBHOOK_URL" ]; then
             TIMESTAMP=$(TZ=Asia/Tokyo date +"%Y-%m-%d %H:%M JST")
+            MANUS_URL="${{ steps.manus.outputs.task_url }}"
+            MANUS_INFO=""
+            if [ -n "$MANUS_URL" ]; then
+              MANUS_INFO=", {\"name\": \"Manus分析\", \"value\": \"[View](${MANUS_URL})\", \"inline\": true}"
+            fi
+
             curl -s -X POST "$DISCORD_WEBHOOK_URL" \
               -H "Content-Type: application/json" \
-              -d "{\"embeds\": [{\"title\": \"❌ AI カード自動補充失敗\", \"color\": 15158332, \"description\": \"カード生成でエラーが発生しました。\", \"fields\": [{\"name\": \"テーマ\", \"value\": \"${{ inputs.themes || 'tax,career,general' }}\", \"inline\": true}, {\"name\": \"日時\", \"value\": \"${TIMESTAMP}\", \"inline\": true}, {\"name\": \"ログ\", \"value\": \"[View Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\", \"inline\": true}], \"footer\": {\"text\": \"AI Card Generator\"}}]}"
+              -d "{\"embeds\": [{\"title\": \"❌ AI カード自動補充失敗（3回リトライ後）\", \"color\": 15158332, \"description\": \"GitHub Issue を作成しました。Manus が原因分析中です。\", \"fields\": [{\"name\": \"テーマ\", \"value\": \"${{ inputs.themes || 'tax,career,general' }}\", \"inline\": true}, {\"name\": \"日時\", \"value\": \"${TIMESTAMP}\", \"inline\": true}, {\"name\": \"ログ\", \"value\": \"[View Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\", \"inline\": true}${MANUS_INFO}], \"footer\": {\"text\": \"AI Card Generator\"}}]}"
           fi
