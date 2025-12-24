@@ -67,7 +67,7 @@ jobs:
           fi
 
           echo "Running: deno run main.ts $OPTS"
-          deno run --allow-env --allow-net main.ts $OPTS
+          deno run --allow-env --allow-net --no-lock main.ts $OPTS
 
       - name: Notify Discord
         if: success() && inputs.dry_run != 'true'
