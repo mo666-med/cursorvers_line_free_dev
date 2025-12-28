@@ -9,7 +9,8 @@ import { extractErrorMessage } from "../../_shared/error-utils.ts";
 const log = createLogger("payment-history-line");
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  "";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
@@ -53,30 +54,47 @@ export async function getPaymentHistoryByLineUserId(
 
     if (memberError) {
       log.error("Failed to fetch member", { error: memberError.message });
-      return { success: false, payments: [], totalPaid: 0, error: memberError.message };
+      return {
+        success: false,
+        payments: [],
+        totalPaid: 0,
+        error: memberError.message,
+      };
     }
 
     if (!member) {
-      log.info("No member found for LINE user", { lineUserId: lineUserId.slice(0, 8) + "..." });
+      log.info("No member found for LINE user", {
+        lineUserId: lineUserId.slice(0, 8) + "...",
+      });
       return {
         success: true,
         payments: [],
         totalPaid: 0,
-        message: "会員情報が見つかりません。有料プランにご登録後、お支払い履歴が表示されます。",
+        message:
+          "会員情報が見つかりません。有料プランにご登録後、お支払い履歴が表示されます。",
       };
     }
 
     // payment_historyテーブルから履歴を取得
     const { data: payments, error: paymentError } = await supabase
       .from("payment_history")
-      .select("id, amount, currency, status, description, tier, created_at, stripe_created")
+      .select(
+        "id, amount, currency, status, description, tier, created_at, stripe_created",
+      )
       .eq("member_id", member.id)
       .order("created_at", { ascending: false })
       .limit(limit);
 
     if (paymentError) {
-      log.error("Failed to fetch payment history", { error: paymentError.message });
-      return { success: false, payments: [], totalPaid: 0, error: paymentError.message };
+      log.error("Failed to fetch payment history", {
+        error: paymentError.message,
+      });
+      return {
+        success: false,
+        payments: [],
+        totalPaid: 0,
+        error: paymentError.message,
+      };
     }
 
     // 合計支払い額を計算
@@ -105,7 +123,9 @@ export async function getPaymentHistoryByLineUserId(
 /**
  * 支払い履歴をLINEメッセージ用にフォーマット
  */
-export function formatPaymentHistoryMessage(result: PaymentHistoryResult): string {
+export function formatPaymentHistoryMessage(
+  result: PaymentHistoryResult,
+): string {
   if (!result.success) {
     return [
       "❌ 支払い履歴の取得に失敗しました",

@@ -993,7 +993,9 @@ async function handleEvent(event: LineEvent): Promise<void> {
     // 10) 支払い履歴照会
     // ========================================
     if (isPaymentHistoryCommand(trimmed)) {
-      log.info("Payment history requested", { userId: anonymizeUserId(lineUserId) });
+      log.info("Payment history requested", {
+        userId: anonymizeUserId(lineUserId),
+      });
       const result = await getPaymentHistoryByLineUserId(lineUserId);
       const message = formatPaymentHistoryMessage(result);
       if (replyToken) {

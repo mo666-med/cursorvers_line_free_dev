@@ -44,7 +44,9 @@ export async function savePaymentFromCheckout(
       email: session.customer_details?.email || null,
       amount: session.amount_total || 0,
       currency: session.currency || "jpy",
-      status: session.payment_status === "paid" ? "succeeded" : session.payment_status || "unknown",
+      status: session.payment_status === "paid"
+        ? "succeeded"
+        : session.payment_status || "unknown",
       description: getTierDescription(tier),
       tier,
       payment_method_type: null, // checkout sessionからは取得困難

@@ -28,8 +28,8 @@ import {
 } from "../_shared/verification-code.ts";
 import { determineMembershipTier, determineStatus } from "./tier-utils.ts";
 import {
-  savePaymentFromCheckout,
   savePaymentFromCharge,
+  savePaymentFromCheckout,
 } from "./payment-history.ts";
 
 const log = createLogger("stripe-webhook");

@@ -378,7 +378,10 @@ export function matchMenuCommand(text: string): MenuCommand {
   if (trimmed === "サービス詳細を見る") return "service_detail";
   if (trimmed === "プロンプト整形の使い方") return "prompt_polish_guide";
   if (trimmed === "リスクチェックの使い方") return "risk_check_guide";
-  if (trimmed === "マイページ" || trimmed === "メニュー" || trimmed === "マイメニュー") return "my_page";
+  if (
+    trimmed === "マイページ" || trimmed === "メニュー" ||
+    trimmed === "マイメニュー"
+  ) return "my_page";
 
   return null;
 }

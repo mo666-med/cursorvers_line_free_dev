@@ -118,8 +118,20 @@ Deno.test("formatPaymentHistoryMessage - shows correct status emojis", () => {
     totalPaid: status === "succeeded" ? 1000 : 0,
   });
 
-  assertEquals(formatPaymentHistoryMessage(createResult("succeeded")).includes("✅"), true);
-  assertEquals(formatPaymentHistoryMessage(createResult("failed")).includes("❌"), true);
-  assertEquals(formatPaymentHistoryMessage(createResult("refunded")).includes("↩️"), true);
-  assertEquals(formatPaymentHistoryMessage(createResult("pending")).includes("⏳"), true);
+  assertEquals(
+    formatPaymentHistoryMessage(createResult("succeeded")).includes("✅"),
+    true,
+  );
+  assertEquals(
+    formatPaymentHistoryMessage(createResult("failed")).includes("❌"),
+    true,
+  );
+  assertEquals(
+    formatPaymentHistoryMessage(createResult("refunded")).includes("↩️"),
+    true,
+  );
+  assertEquals(
+    formatPaymentHistoryMessage(createResult("pending")).includes("⏳"),
+    true,
+  );
 });
