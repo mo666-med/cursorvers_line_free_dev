@@ -16,22 +16,54 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           MANUS_AUDIT_API_KEY: ${{ secrets.MANUS_AUDIT_API_KEY }}
         run: |
-          AUTH_TOKEN="${SUPABASE_SERVICE_ROLE_KEY:-${MANUS_AUDIT_API_KEY}}"
-          if [ -z "$AUTH_TOKEN" ]; then
-            echo "❌ Missing auth token: set SUPABASE_SERVICE_ROLE_KEY or MANUS_AUDIT_API_KEY"
+          echo "🔐 Checking required secrets..."
+
+          MISSING=()
+          if [ -z "$SUPABASE_URL" ]; then
+            MISSING+=("SUPABASE_URL")
+          fi
+
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ] && [ -z "$MANUS_AUDIT_API_KEY" ]; then
+            MISSING+=("SUPABASE_SERVICE_ROLE_KEY or MANUS_AUDIT_API_KEY")
+          fi
+
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo "❌ Missing required secrets: ${MISSING[*]}"
+            echo "   → GitHub Secrets に必要な値を設定してください"
             exit 1
+          fi
+
+          if [ -n "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            AUTH_TOKEN="$SUPABASE_SERVICE_ROLE_KEY"
+            AUTH_SOURCE="SUPABASE_SERVICE_ROLE_KEY"
+          else
+            AUTH_TOKEN="$MANUS_AUDIT_API_KEY"
+            AUTH_SOURCE="MANUS_AUDIT_API_KEY"
+          fi
+
+          echo "✅ Auth token source: $AUTH_SOURCE"
+          echo "ℹ️ X-API-Key header: $(if [ -n "$MANUS_AUDIT_API_KEY" ]; then echo enabled; else echo disabled; fi)"
+
+          HEADER_ARGS=(
+            -H "Content-Type: application/json"
+            -H "Authorization: Bearer ${AUTH_TOKEN}"
+          )
+
+          if [ -n "$MANUS_AUDIT_API_KEY" ]; then
+            HEADER_ARGS+=( -H "X-API-Key: ${MANUS_AUDIT_API_KEY}" )
           fi
 
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             "${SUPABASE_URL}/functions/v1/manus-audit-line-daily-brief?mode=report" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${AUTH_TOKEN}" \
-            -H "X-API-Key: ${MANUS_AUDIT_API_KEY}")
+            "${HEADER_ARGS[@]}")
           HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
           BODY=$(echo "$RESPONSE" | sed '$d')
           echo "Response: $BODY"
           echo "HTTP Code: $HTTP_CODE"
           if [ "$HTTP_CODE" -ne 200 ]; then
+            if [ "$HTTP_CODE" -eq 401 ] || [ "$HTTP_CODE" -eq 403 ]; then
+              echo "❌ 認証に失敗しました。GitHub SecretsのSUPABASE_SERVICE_ROLE_KEY/MANUS_AUDIT_API_KEYを確認してください。"
+            fi
             echo "❌ レポート実行失敗 (HTTP $HTTP_CODE)"
             exit 1
           fi
