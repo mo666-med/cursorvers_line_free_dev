@@ -13,11 +13,19 @@ jobs:
       - name: Run report
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           MANUS_AUDIT_API_KEY: ${{ secrets.MANUS_AUDIT_API_KEY }}
         run: |
+          AUTH_TOKEN="${SUPABASE_SERVICE_ROLE_KEY:-${MANUS_AUDIT_API_KEY}}"
+          if [ -z "$AUTH_TOKEN" ]; then
+            echo "❌ Missing auth token: set SUPABASE_SERVICE_ROLE_KEY or MANUS_AUDIT_API_KEY"
+            exit 1
+          fi
+
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             "${SUPABASE_URL}/functions/v1/manus-audit-line-daily-brief?mode=report" \
             -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${AUTH_TOKEN}" \
             -H "X-API-Key: ${MANUS_AUDIT_API_KEY}")
           HTTP_CODE=$(echo "$RESPONSE" | tail -n 1)
           BODY=$(echo "$RESPONSE" | sed '$d')
