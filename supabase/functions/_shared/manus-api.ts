@@ -208,6 +208,7 @@ export function buildRemediationPrompt(auditResult: {
     cardInventory: { passed: boolean; warnings: string[]; details?: unknown[] };
     broadcastSuccess: { passed: boolean; warnings: string[] };
     databaseHealth?: { passed: boolean; warnings: string[] };
+    lineRegistrationSystem?: { passed: boolean; warnings: string[] };
   };
   summary: { warningCount: number; errorCount: number };
 }): string {
@@ -248,6 +249,21 @@ export function buildRemediationPrompt(auditResult: {
     }
   }
 
+  // LINE登録システム問題（Webhook、API、ランディングページ）
+  if (
+    auditResult.checks.lineRegistrationSystem &&
+    !auditResult.checks.lineRegistrationSystem.passed
+  ) {
+    const sanitizedWarnings = sanitizeWarnings(
+      auditResult.checks.lineRegistrationSystem.warnings,
+    );
+    if (sanitizedWarnings.length > 0) {
+      issues.push(
+        `【LINE登録システム問題】\n${sanitizedWarnings.join("\n")}`,
+      );
+    }
+  }
+
   const prompt = `
 # 🚨 LINE Daily Brief システム監査エラー - 自動修繕を実行してください
 
@@ -284,7 +300,26 @@ npx supabase functions logs line-daily-brief --project-ref haaxgwyimoqzzxzdaeep
 npx supabase functions deploy line-daily-brief --project-ref haaxgwyimoqzzxzdaeep
 \`\`\`
 
-### 3. GitHub Issueを作成（重大な問題の場合）
+### 3. LINE Webhook/登録システムの修繕
+\`\`\`bash
+# LINE Webhookの疎通確認
+curl -s "https://haaxgwyimoqzzxzdaeep.supabase.co/functions/v1/line-webhook"
+# 期待: "OK - line-webhook is running"
+
+# 401エラーの場合: LINE_CHANNEL_SECRETを再設定
+# LINE Developersコンソール(https://developers.line.biz/)でChannel secretを確認
+npx supabase secrets set LINE_CHANNEL_SECRET="<Channel secret>" --project-ref haaxgwyimoqzzxzdaeep
+
+# JWT検証エラーの場合: --no-verify-jwtで再デプロイ
+npx supabase functions deploy line-webhook --no-verify-jwt --project-ref haaxgwyimoqzzxzdaeep
+
+# LINE登録APIの確認
+curl -s "https://haaxgwyimoqzzxzdaeep.supabase.co/functions/v1/line-register" \\
+  -X POST -H "Content-Type: application/json" \\
+  -d '{"email":"test@example.com","opt_in_email":false}'
+\`\`\`
+
+### 4. GitHub Issueを作成（重大な問題の場合）
 \`\`\`bash
 gh issue create --repo mo666-med/cursorvers_line_free_dev \\
   --title "🚨 自動検出: システム監査エラー" \\
