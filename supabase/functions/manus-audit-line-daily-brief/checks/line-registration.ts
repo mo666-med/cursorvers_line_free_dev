@@ -34,7 +34,9 @@ export async function checkLineRegistrationSystem(
       warnings.push(`🚨 LINE Webhook: ${webhookHealth.error}`);
     }
   }
-  if (webhookHealth.responseTime && webhookHealth.responseTime > API_TIMEOUT_MS) {
+  if (
+    webhookHealth.responseTime && webhookHealth.responseTime > API_TIMEOUT_MS
+  ) {
     warnings.push(
       `⚠️ LINE Webhook: レスポンス時間が遅い (${webhookHealth.responseTime}ms)`,
     );
