@@ -53,6 +53,7 @@ const DISCORD_ADMIN_WEBHOOK_URL = Deno.env.get("DISCORD_ADMIN_WEBHOOK_URL");
 const DISCORD_MAINT_WEBHOOK_URL = Deno.env.get("DISCORD_MAINT_WEBHOOK_URL");
 const MANUS_WEBHOOK_URL = Deno.env.get("MANUS_WEBHOOK_URL");
 const LANDING_PAGE_URL = Deno.env.get("LANDING_PAGE_URL") ?? "";
+const LINE_CHANNEL_ACCESS_TOKEN = Deno.env.get("LINE_CHANNEL_ACCESS_TOKEN");
 
 // Validate required environment variables
 function validateEnv(): { valid: boolean; error?: string } {
@@ -179,7 +180,11 @@ Deno.serve(async (req) => {
     // LINE registration system checks
     result.checks.lineRegistrationSystem = await checkLineRegistrationSystem(
       supabaseClient,
-      { supabaseUrl: SUPABASE_URL!, landingPageUrl: LANDING_PAGE_URL },
+      {
+        supabaseUrl: SUPABASE_URL!,
+        landingPageUrl: LANDING_PAGE_URL,
+        lineChannelAccessToken: LINE_CHANNEL_ACCESS_TOKEN,
+      },
     );
 
     // Calculate summary

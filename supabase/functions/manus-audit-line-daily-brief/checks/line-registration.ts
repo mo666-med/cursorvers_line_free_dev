@@ -15,7 +15,11 @@ const LIFF_ID = "2008640048-jnoneGgO";
 interface CheckConfig {
   supabaseUrl: string;
   landingPageUrl: string;
+  lineChannelAccessToken?: string;
 }
+
+const LINE_API_BASE = "https://api.line.me";
+const INTERACTION_FRESHNESS_HOURS = 48; // 48時間以内にインタラクションがあるか
 
 export async function checkLineRegistrationSystem(
   client: SupabaseClient,
@@ -88,6 +92,24 @@ export async function checkLineRegistrationSystem(
     allPassed = false;
   }
 
+  // 4. Check LINE Messaging API (Bot info) - トークン有効性確認
+  const lineBotHealth = await checkLineBotHealth(config.lineChannelAccessToken);
+  if (!lineBotHealth.passed) {
+    allPassed = false;
+    if (lineBotHealth.error) {
+      warnings.push(`🚨 LINE Bot API: ${lineBotHealth.error}`);
+    }
+  }
+
+  // 5. Check recent interactions - 最近の応答があるか確認
+  const recentInteractions = await checkRecentInteractions(client);
+  if (!recentInteractions.passed) {
+    // インタラクションがないのは警告のみ（ユーザーがいない可能性もある）
+    if (recentInteractions.error) {
+      warnings.push(`⚠️ LINE応答: ${recentInteractions.error}`);
+    }
+  }
+
   log.info("LINE registration system check completed", {
     passed: allPassed,
     warningCount: warnings.length,
@@ -101,6 +123,8 @@ export async function checkLineRegistrationSystem(
       apiHealth,
       googleSheetsSync,
       landingPageAccess,
+      lineBotHealth,
+      recentInteractions,
     },
   };
 }
@@ -272,6 +296,115 @@ async function checkLandingPageAccess(
     return {
       passed: false,
       error: `アクセス失敗 - ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+}
+
+/**
+ * LINE Bot API の認証確認（Bot情報取得）
+ * LINE_CHANNEL_ACCESS_TOKEN が有効かどうかを確認
+ */
+async function checkLineBotHealth(
+  accessToken?: string,
+): Promise<{ passed: boolean; botName?: string; error?: string }> {
+  if (!accessToken) {
+    return {
+      passed: false,
+      error: "LINE_CHANNEL_ACCESS_TOKEN未設定",
+    };
+  }
+
+  try {
+    const response = await fetch(`${LINE_API_BASE}/v2/bot/info`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      log.info("LINE Bot API is healthy", { botName: data.displayName });
+      return { passed: true, botName: data.displayName };
+    } else if (response.status === 401) {
+      return {
+        passed: false,
+        error: "トークン無効または期限切れ (401)",
+      };
+    } else {
+      return {
+        passed: false,
+        error: `HTTP ${response.status}`,
+      };
+    }
+  } catch (error) {
+    return {
+      passed: false,
+      error: `API接続失敗 - ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+}
+
+/**
+ * 最近のインタラクション確認
+ * 過去48時間以内にユーザーとのやり取りがあるか確認
+ */
+async function checkRecentInteractions(
+  client: SupabaseClient,
+): Promise<
+  { passed: boolean; lastInteraction?: string; count?: number; error?: string }
+> {
+  try {
+    const hoursAgo = new Date(
+      Date.now() - INTERACTION_FRESHNESS_HOURS * 60 * 60 * 1000,
+    ).toISOString();
+
+    const { data, error, count } = await client
+      .from("interaction_logs")
+      .select("created_at", { count: "exact" })
+      .gte("created_at", hoursAgo)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (error) {
+      // テーブルが存在しない場合はスキップ
+      if (
+        error.code === "PGRST116" || error.message.includes("does not exist")
+      ) {
+        log.info("interaction_logs table not found, skipping check");
+        return { passed: true };
+      }
+      return {
+        passed: false,
+        error: `DB確認失敗 - ${error.message}`,
+      };
+    }
+
+    if (count && count > 0 && data && data.length > 0) {
+      log.info("Recent interactions found", {
+        count,
+        lastInteraction: data[0].created_at,
+      });
+      return {
+        passed: true,
+        lastInteraction: data[0].created_at,
+        count,
+      };
+    }
+
+    return {
+      passed: false,
+      count: 0,
+      error: `過去${INTERACTION_FRESHNESS_HOURS}時間以内のインタラクションなし`,
+    };
+  } catch (error) {
+    return {
+      passed: false,
+      error: `チェック失敗 - ${
         error instanceof Error ? error.message : String(error)
       }`,
     };

@@ -57,6 +57,13 @@ export interface LineRegistrationCheckResult extends CheckResult {
       responseTime?: number;
       error?: string;
     };
+    lineBotHealth: { passed: boolean; botName?: string; error?: string };
+    recentInteractions: {
+      passed: boolean;
+      lastInteraction?: string;
+      count?: number;
+      error?: string;
+    };
   };
 }
 
