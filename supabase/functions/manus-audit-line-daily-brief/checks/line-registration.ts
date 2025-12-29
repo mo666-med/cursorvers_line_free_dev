@@ -3,14 +3,28 @@
  */
 import { SupabaseClient } from "@supabase/supabase-js";
 import { createLogger } from "../../_shared/logger.ts";
-import { LineRegistrationCheckResult } from "../types.ts";
+import {
+  LineBotHealthResult,
+  LineRegistrationCheckResult,
+  RecentInteractionsResult,
+  ResponseTimeHealthResult,
+  SheetsSyncResult,
+} from "../types.ts";
 
 const log = createLogger("audit-line-registration");
 
+// タイムアウト設定
 const API_TIMEOUT_MS = 5000;
 const LANDING_PAGE_TIMEOUT_MS = 3000;
 const SYNC_FRESHNESS_MS = 60 * 60 * 1000; // 1 hour
 const LIFF_ID = "2008640048-jnoneGgO";
+
+// LINE API設定
+const LINE_API_BASE = "https://api.line.me";
+const INTERACTION_FRESHNESS_HOURS = 48;
+
+// テーブル不存在エラーコード
+const TABLE_NOT_FOUND_CODES = ["PGRST116", "42P01"];
 
 interface CheckConfig {
   supabaseUrl: string;
@@ -18,8 +32,38 @@ interface CheckConfig {
   lineChannelAccessToken?: string;
 }
 
-const LINE_API_BASE = "https://api.line.me";
-const INTERACTION_FRESHNESS_HOURS = 48; // 48時間以内にインタラクションがあるか
+/**
+ * エラーメッセージをフォーマット
+ */
+function formatError(action: string, error: unknown): string {
+  return `${action} - ${
+    error instanceof Error ? error.message : String(error)
+  }`;
+}
+
+/**
+ * タイムアウト付きfetch
+ */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs: number = API_TIMEOUT_MS,
+): Promise<{ response: Response; responseTime: number }> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  const startTime = Date.now();
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    const responseTime = Date.now() - startTime;
+    return { response, responseTime };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 export async function checkLineRegistrationSystem(
   client: SupabaseClient,
@@ -27,11 +71,28 @@ export async function checkLineRegistrationSystem(
 ): Promise<LineRegistrationCheckResult> {
   log.info("Checking LINE registration system");
 
+  // 全チェックを並列実行
+  const [
+    webhookHealth,
+    apiHealth,
+    googleSheetsSync,
+    landingPageAccess,
+    lineBotHealth,
+    recentInteractions,
+  ] = await Promise.all([
+    checkWebhookHealth(config.supabaseUrl),
+    checkApiHealth(config.supabaseUrl),
+    checkGoogleSheetsSync(client),
+    checkLandingPageAccess(config.landingPageUrl),
+    checkLineBotHealth(config.lineChannelAccessToken),
+    checkRecentInteractions(client),
+  ]);
+
+  // 警告を集約
   const warnings: string[] = [];
   let allPassed = true;
 
-  // 0. Check LINE Webhook health (リッチメニュー応答用)
-  const webhookHealth = await checkWebhookHealth(config.supabaseUrl);
+  // Webhook チェック
   if (!webhookHealth.passed) {
     allPassed = false;
     if (webhookHealth.error) {
@@ -46,8 +107,7 @@ export async function checkLineRegistrationSystem(
     );
   }
 
-  // 1. Check LINE register API health
-  const apiHealth = await checkApiHealth(config.supabaseUrl);
+  // 登録API チェック
   if (!apiHealth.passed) {
     allPassed = false;
     if (apiHealth.error) {
@@ -65,8 +125,7 @@ export async function checkLineRegistrationSystem(
     allPassed = false;
   }
 
-  // 2. Check Google Sheets sync
-  const googleSheetsSync = await checkGoogleSheetsSync(client);
+  // Google Sheets連携 チェック
   if (!googleSheetsSync.passed) {
     allPassed = false;
     if (googleSheetsSync.error) {
@@ -74,8 +133,7 @@ export async function checkLineRegistrationSystem(
     }
   }
 
-  // 3. Check Landing Page access
-  const landingPageAccess = await checkLandingPageAccess(config.landingPageUrl);
+  // ランディングページ チェック
   if (!landingPageAccess.passed) {
     allPassed = false;
     if (landingPageAccess.error) {
@@ -92,8 +150,7 @@ export async function checkLineRegistrationSystem(
     allPassed = false;
   }
 
-  // 4. Check LINE Messaging API (Bot info) - トークン有効性確認
-  const lineBotHealth = await checkLineBotHealth(config.lineChannelAccessToken);
+  // LINE Bot API チェック
   if (!lineBotHealth.passed) {
     allPassed = false;
     if (lineBotHealth.error) {
@@ -101,10 +158,8 @@ export async function checkLineRegistrationSystem(
     }
   }
 
-  // 5. Check recent interactions - 最近の応答があるか確認
-  const recentInteractions = await checkRecentInteractions(client);
+  // インタラクション チェック（警告のみ）
   if (!recentInteractions.passed) {
-    // インタラクションがないのは警告のみ（ユーザーがいない可能性もある）
     if (recentInteractions.error) {
       warnings.push(`⚠️ LINE応答: ${recentInteractions.error}`);
     }
@@ -134,13 +189,12 @@ export async function checkLineRegistrationSystem(
  */
 async function checkWebhookHealth(
   supabaseUrl: string,
-): Promise<{ passed: boolean; responseTime?: number; error?: string }> {
+): Promise<ResponseTimeHealthResult> {
   try {
-    const startTime = Date.now();
-    const response = await fetch(`${supabaseUrl}/functions/v1/line-webhook`, {
-      method: "GET",
-    });
-    const responseTime = Date.now() - startTime;
+    const { response, responseTime } = await fetchWithTimeout(
+      `${supabaseUrl}/functions/v1/line-webhook`,
+      { method: "GET" },
+    );
 
     if (response.ok) {
       const text = await response.text();
@@ -162,29 +216,31 @@ async function checkWebhookHealth(
       };
     }
   } catch (error) {
-    return {
-      passed: false,
-      error: `接続失敗 - ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    };
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return { passed: false, error: `タイムアウト (${API_TIMEOUT_MS}ms)` };
+    }
+    return { passed: false, error: formatError("接続失敗", error) };
   }
 }
 
+/**
+ * LINE登録API の疎通チェック
+ */
 async function checkApiHealth(
   supabaseUrl: string,
-): Promise<{ passed: boolean; responseTime?: number; error?: string }> {
+): Promise<ResponseTimeHealthResult> {
   try {
-    const startTime = Date.now();
-    const response = await fetch(`${supabaseUrl}/functions/v1/line-register`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: `manus-audit-${Date.now()}@example.com`,
-        opt_in_email: true,
-      }),
-    });
-    const responseTime = Date.now() - startTime;
+    const { response, responseTime } = await fetchWithTimeout(
+      `${supabaseUrl}/functions/v1/line-register`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: `manus-audit-${Date.now()}@example.com`,
+          opt_in_email: true,
+        }),
+      },
+    );
 
     if (response.ok) {
       const data = await response.json();
@@ -206,18 +262,19 @@ async function checkApiHealth(
       };
     }
   } catch (error) {
-    return {
-      passed: false,
-      error: `接続失敗 - ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    };
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return { passed: false, error: `タイムアウト (${API_TIMEOUT_MS}ms)` };
+    }
+    return { passed: false, error: formatError("接続失敗", error) };
   }
 }
 
+/**
+ * Google Sheets連携の確認（DB経由）
+ */
 async function checkGoogleSheetsSync(
   client: SupabaseClient,
-): Promise<{ passed: boolean; lastUpdate?: string; error?: string }> {
+): Promise<SheetsSyncResult> {
   try {
     const { data, error } = await client
       .from("members")
@@ -230,7 +287,7 @@ async function checkGoogleSheetsSync(
     if (error) {
       return {
         passed: false,
-        error: `データベース確認失敗 - ${error.message}`,
+        error: formatError("データベース確認失敗", error),
       };
     }
 
@@ -256,22 +313,22 @@ async function checkGoogleSheetsSync(
       error: "最近の監査データが見つかりません",
     };
   } catch (error) {
-    return {
-      passed: false,
-      error: `チェック失敗 - ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    };
+    return { passed: false, error: formatError("チェック失敗", error) };
   }
 }
 
+/**
+ * ランディングページのアクセス確認
+ */
 async function checkLandingPageAccess(
   landingPageUrl: string,
-): Promise<{ passed: boolean; responseTime?: number; error?: string }> {
+): Promise<ResponseTimeHealthResult> {
   try {
-    const startTime = Date.now();
-    const response = await fetch(landingPageUrl, { method: "GET" });
-    const responseTime = Date.now() - startTime;
+    const { response, responseTime } = await fetchWithTimeout(
+      landingPageUrl,
+      { method: "GET" },
+      LANDING_PAGE_TIMEOUT_MS,
+    );
 
     if (response.ok) {
       const html = await response.text();
@@ -293,22 +350,22 @@ async function checkLandingPageAccess(
       };
     }
   } catch (error) {
-    return {
-      passed: false,
-      error: `アクセス失敗 - ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    };
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return {
+        passed: false,
+        error: `タイムアウト (${LANDING_PAGE_TIMEOUT_MS}ms)`,
+      };
+    }
+    return { passed: false, error: formatError("アクセス失敗", error) };
   }
 }
 
 /**
  * LINE Bot API の認証確認（Bot情報取得）
- * LINE_CHANNEL_ACCESS_TOKEN が有効かどうかを確認
  */
 async function checkLineBotHealth(
   accessToken?: string,
-): Promise<{ passed: boolean; botName?: string; error?: string }> {
+): Promise<LineBotHealthResult> {
   if (!accessToken) {
     return {
       passed: false,
@@ -317,12 +374,13 @@ async function checkLineBotHealth(
   }
 
   try {
-    const response = await fetch(`${LINE_API_BASE}/v2/bot/info`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
+    const { response } = await fetchWithTimeout(
+      `${LINE_API_BASE}/v2/bot/info`,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${accessToken}` },
       },
-    });
+    );
 
     if (response.ok) {
       const data = await response.json();
@@ -340,24 +398,19 @@ async function checkLineBotHealth(
       };
     }
   } catch (error) {
-    return {
-      passed: false,
-      error: `API接続失敗 - ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    };
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return { passed: false, error: `タイムアウト (${API_TIMEOUT_MS}ms)` };
+    }
+    return { passed: false, error: formatError("API接続失敗", error) };
   }
 }
 
 /**
  * 最近のインタラクション確認
- * 過去48時間以内にユーザーとのやり取りがあるか確認
  */
 async function checkRecentInteractions(
   client: SupabaseClient,
-): Promise<
-  { passed: boolean; lastInteraction?: string; count?: number; error?: string }
-> {
+): Promise<RecentInteractionsResult> {
   try {
     const hoursAgo = new Date(
       Date.now() - INTERACTION_FRESHNESS_HOURS * 60 * 60 * 1000,
@@ -372,15 +425,13 @@ async function checkRecentInteractions(
 
     if (error) {
       // テーブルが存在しない場合はスキップ
-      if (
-        error.code === "PGRST116" || error.message.includes("does not exist")
-      ) {
+      if (TABLE_NOT_FOUND_CODES.includes(error.code)) {
         log.info("interaction_logs table not found, skipping check");
         return { passed: true };
       }
       return {
         passed: false,
-        error: `DB確認失敗 - ${error.message}`,
+        error: formatError("DB確認失敗", error),
       };
     }
 
@@ -402,11 +453,6 @@ async function checkRecentInteractions(
       error: `過去${INTERACTION_FRESHNESS_HOURS}時間以内のインタラクションなし`,
     };
   } catch (error) {
-    return {
-      passed: false,
-      error: `チェック失敗 - ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    };
+    return { passed: false, error: formatError("チェック失敗", error) };
   }
 }

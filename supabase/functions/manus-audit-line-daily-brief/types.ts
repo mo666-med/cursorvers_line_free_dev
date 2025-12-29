@@ -47,25 +47,51 @@ export interface DatabaseHealthCheckResult extends CheckResult {
   anomalies?: string[];
 }
 
-export interface LineRegistrationCheckResult extends CheckResult {
-  details: {
-    webhookHealth: { passed: boolean; responseTime?: number; error?: string };
-    apiHealth: { passed: boolean; responseTime?: number; error?: string };
-    googleSheetsSync: { passed: boolean; lastUpdate?: string; error?: string };
-    landingPageAccess: {
-      passed: boolean;
-      responseTime?: number;
-      error?: string;
-    };
-    lineBotHealth: { passed: boolean; botName?: string; error?: string };
-    recentInteractions: {
-      passed: boolean;
-      lastInteraction?: string;
-      count?: number;
-      error?: string;
-    };
-  };
+// ===== LINE Registration Health Check Types =====
+
+/** 基本のヘルスチェック結果 */
+export interface BaseHealthResult {
+  passed: boolean;
+  error?: string;
 }
+
+/** レスポンス時間付きヘルスチェック結果 */
+export interface ResponseTimeHealthResult extends BaseHealthResult {
+  responseTime?: number;
+}
+
+/** Google Sheets同期チェック結果 */
+export interface SheetsSyncResult extends BaseHealthResult {
+  lastUpdate?: string;
+}
+
+/** LINE Bot APIヘルスチェック結果 */
+export interface LineBotHealthResult extends BaseHealthResult {
+  botName?: string;
+}
+
+/** 最近のインタラクションチェック結果 */
+export interface RecentInteractionsResult extends BaseHealthResult {
+  lastInteraction?: string;
+  count?: number;
+}
+
+/** LINE登録システムチェック詳細 */
+export interface LineRegistrationDetails {
+  webhookHealth: ResponseTimeHealthResult;
+  apiHealth: ResponseTimeHealthResult;
+  googleSheetsSync: SheetsSyncResult;
+  landingPageAccess: ResponseTimeHealthResult;
+  lineBotHealth: LineBotHealthResult;
+  recentInteractions: RecentInteractionsResult;
+}
+
+export interface LineRegistrationCheckResult
+  extends CheckResult<LineRegistrationDetails> {
+  details: LineRegistrationDetails;
+}
+
+// ===== Maintenance & Remediation Types =====
 
 export interface MaintenanceResult {
   archivedBroadcasts: number;
