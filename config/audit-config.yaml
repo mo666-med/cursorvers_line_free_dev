@@ -1,6 +1,21 @@
 # Cursorvers System Audit Configuration
-# Updated: 2025-12-16
+# Updated: 2026-01-03
 # Description: 日次システム点検用の設定ファイル
+
+# ===========================================
+# 役割分担（IMPORTANT）
+# ===========================================
+#
+# ┌────────────────┐        ┌────────────────┐
+# │ GitHub Actions │  ────▶ │     Manus      │
+# │   (監査実行)    │        │  (自動修復のみ)  │
+# └────────────────┘        └────────────────┘
+#
+# - 監査実行: GitHub Actions (manus-audit-daily.yml)
+# - 自動修復: Manus (異常検出時のみ起動)
+# - Manus は監査を実行しない
+# - Manus は n8n/Supabase接続テストを行わない
+#
 
 # ===========================================
 # 監査対象サービス
@@ -130,6 +145,12 @@ exclusions:
 # ===========================================
 
 changelog:
+  - date: "2026-01-03"
+    changes:
+      - "役割分担を明確化: GitHub Actions=監査, Manus=自動修復のみ"
+      - "MANUS_ROLE_DEFINITION.md を作成"
+      - "Manus は n8n/Supabase接続テストを行わないルールを明記"
+
   - date: "2025-12-16"
     changes:
       - "N8N_API_KEY更新（末尾XHBU, Never expires）"
