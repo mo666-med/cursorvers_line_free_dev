@@ -195,8 +195,7 @@ async function createManualIssue(
     return { ok: false, error: "MANUS_GITHUB_TOKEN not configured" };
   }
 
-  const endpoint =
-    `${GITHUB_API_BASE}/repos/${repo.owner}/${repo.name}/issues`;
+  const endpoint = `${GITHUB_API_BASE}/repos/${repo.owner}/${repo.name}/issues`;
   const types = failures.map((failure) => failure.type).join(", ");
 
   const failureDetails = failures
