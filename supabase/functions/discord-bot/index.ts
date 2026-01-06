@@ -9,6 +9,7 @@ import nacl from "tweetnacl";
 import { extractErrorMessage } from "../_shared/error-utils.ts";
 import { createLogger } from "../_shared/logger.ts";
 import { EMAIL_REGEX } from "../_shared/validation-utils.ts";
+import { hexToUint8Array, splitMessage } from "../_shared/utils.ts";
 
 const log = createLogger("discord-bot");
 
@@ -291,7 +292,7 @@ async function handleSecBriefLatest(
 ): Promise<Response> {
   const { data, error } = await supabase
     .from("sec_brief")
-    .select("*")
+    .select("id,title,body_markdown")
     .eq("status", "draft")
     .order("created_at", { ascending: false })
     .limit(1)
@@ -346,7 +347,7 @@ async function handleSecBriefPublish(
   // 最新のドラフトを取得
   const { data, error } = await supabase
     .from("sec_brief")
-    .select("*")
+    .select("id,title,body_markdown")
     .eq("status", "draft")
     .order("created_at", { ascending: false })
     .limit(1)
@@ -484,39 +485,4 @@ function verifySignature(
   }
 }
 
-function hexToUint8Array(hex: string): Uint8Array {
-  const matches = hex.match(/.{1,2}/g);
-  if (!matches) {
-    throw new Error("Invalid hex string");
-  }
-  return new Uint8Array(matches.map((byte) => parseInt(byte, 16)));
-}
-
-// メッセージを指定文字数で分割
-function splitMessage(text: string, maxLength: number): string[] {
-  const chunks: string[] = [];
-  let remaining = text;
-
-  while (remaining.length > 0) {
-    if (remaining.length <= maxLength) {
-      chunks.push(remaining);
-      break;
-    }
-
-    // 改行位置で分割を試みる
-    let splitIndex = remaining.lastIndexOf("\n", maxLength);
-    if (splitIndex === -1 || splitIndex < maxLength / 2) {
-      // 改行が見つからない場合はスペースで分割
-      splitIndex = remaining.lastIndexOf(" ", maxLength);
-    }
-    if (splitIndex === -1 || splitIndex < maxLength / 2) {
-      // それでも見つからない場合は強制分割
-      splitIndex = maxLength;
-    }
-
-    chunks.push(remaining.substring(0, splitIndex));
-    remaining = remaining.substring(splitIndex).trimStart();
-  }
-
-  return chunks;
-}
+// hexToUint8Array と splitMessage は _shared/utils.ts からインポート
