@@ -5,8 +5,7 @@
  * Called by GitHub Actions when lint/format checks fail.
  *
  * Features:
- * - Auto-fix format errors with `deno fmt`
- * - Auto-fix lint issues with `deno lint --fix`
+ * - Trigger GitHub Actions for `deno fmt` / `deno lint --fix`
  * - Report results to Discord
  * - Escalate unfixable issues to GitHub Issues
  *
@@ -32,6 +31,7 @@ interface FixRequest {
   repository: string;
   branch: string;
   path: string;
+  commitSha?: string;
   failures: Array<{
     type: FailureType;
     files?: string[];
@@ -81,6 +81,12 @@ import { createLogger } from "../_shared/logger.ts";
 
 const MANUS_FIXER_API_KEY = getEnv("MANUS_FIXER_API_KEY");
 const DISCORD_WEBHOOK_URL = Deno.env.get("DISCORD_MANUS_WEBHOOK_URL");
+const GITHUB_TOKEN = Deno.env.get("MANUS_GITHUB_TOKEN") ??
+  Deno.env.get("GITHUB_TOKEN");
+const GITHUB_API_BASE = Deno.env.get("GITHUB_API_BASE") ??
+  "https://api.github.com";
+const CODE_FIXER_WORKFLOW = Deno.env.get("MANUS_CODE_FIXER_WORKFLOW") ??
+  "manus-code-fixer.yml";
 
 const log = createLogger("manus-code-fixer");
 
@@ -95,54 +101,155 @@ function verifyAuth(req: Request): boolean {
   return false;
 }
 
-function runDenoFmt(
-  path: string,
-  files: string[],
-): { success: boolean; output: string } {
-  log.info("Running deno fmt", { path, fileCount: files.length });
+const FIXABLE_TYPES: FailureType[] = ["format", "lint"];
 
-  try {
-    // In a real implementation, this would:
-    // 1. Clone the repository
-    // 2. Run deno fmt on the specified files
-    // 3. Capture the output
-
-    // For now, return a simulated result
-    const output =
-      `Checked ${files.length} files\nFormatted ${files.length} files`;
-
-    log.info("deno fmt completed", { success: true });
-    return { success: true, output };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    log.error("deno fmt failed", { errorMessage });
-    return { success: false, output: errorMessage };
-  }
+interface RepoInfo {
+  owner: string;
+  name: string;
 }
 
-function runDenoLintFix(
-  path: string,
-  files: string[],
-): { success: boolean; output: string } {
-  log.info("Running deno lint --fix", { path, fileCount: files.length });
+interface DispatchResult {
+  ok: boolean;
+  error?: string;
+}
 
-  try {
-    // In a real implementation, this would:
-    // 1. Clone the repository
-    // 2. Run deno lint --fix on the specified files
-    // 3. Capture the output
+interface IssueResult {
+  ok: boolean;
+  url?: string;
+  error?: string;
+}
 
-    // For now, return a simulated result
-    const output =
-      `Checked ${files.length} files\nFixed lint issues in ${files.length} files`;
-
-    log.info("deno lint --fix completed", { success: true });
-    return { success: true, output };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    log.error("deno lint --fix failed", { errorMessage });
-    return { success: false, output: errorMessage };
+function parseRepository(repository: string): RepoInfo {
+  const [owner, name] = repository.split("/");
+  if (!owner || !name) {
+    throw new Error(
+      "Invalid repository format. Expected 'owner/repo'.",
+    );
   }
+  return { owner, name };
+}
+
+async function dispatchFixWorkflow(
+  repo: RepoInfo,
+  request: FixRequest,
+  fixTypes: FailureType[],
+  files: string[],
+): Promise<DispatchResult> {
+  if (!GITHUB_TOKEN) {
+    return { ok: false, error: "MANUS_GITHUB_TOKEN not configured" };
+  }
+
+  const inputs: Record<string, string> = {
+    fix_types: fixTypes.join(","),
+    path: request.path ?? "",
+  };
+
+  if (files.length > 0) {
+    inputs.files = files.join(",");
+  }
+
+  if (request.commitSha) {
+    inputs.commit_sha = request.commitSha;
+  }
+
+  const endpoint =
+    `${GITHUB_API_BASE}/repos/${repo.owner}/${repo.name}/actions/workflows/${CODE_FIXER_WORKFLOW}/dispatches`;
+
+  log.info("Dispatching code fixer workflow", {
+    repository: request.repository,
+    branch: request.branch,
+    fixTypes,
+    fileCount: files.length,
+  });
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
+    },
+    body: JSON.stringify({
+      ref: request.branch,
+      inputs,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    return {
+      ok: false,
+      error: `Workflow dispatch failed (${response.status}): ${errorBody}`,
+    };
+  }
+
+  return { ok: true };
+}
+
+async function createManualIssue(
+  repo: RepoInfo,
+  request: FixRequest,
+  failures: FixRequest["failures"],
+): Promise<IssueResult> {
+  if (!GITHUB_TOKEN) {
+    return { ok: false, error: "MANUS_GITHUB_TOKEN not configured" };
+  }
+
+  const endpoint =
+    `${GITHUB_API_BASE}/repos/${repo.owner}/${repo.name}/issues`;
+  const types = failures.map((failure) => failure.type).join(", ");
+
+  const failureDetails = failures
+    .map((failure) => {
+      const files = failure.files?.length
+        ? `files: ${failure.files.join(", ")}`
+        : "files: (not provided)";
+      const details = failure.details ? `details: ${failure.details}` : "";
+      return `- ${failure.type} (${files}) ${details}`.trim();
+    })
+    .join("\n");
+
+  const body = [
+    "## Manus Code Fixer escalation",
+    "",
+    `- Repository: ${request.repository}`,
+    `- Branch: ${request.branch}`,
+    request.commitSha ? `- Commit: ${request.commitSha}` : null,
+    `- Path: ${request.path}`,
+    "",
+    "### Failures",
+    failureDetails,
+    "",
+    "### Recommended action",
+    "Manual investigation required (tests/security/build).",
+  ]
+    .filter((line) => line)
+    .join("\n");
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
+    },
+    body: JSON.stringify({
+      title: `Manus Code Fixer: manual review required (${types})`,
+      body,
+      labels: ["manus", "auto-fix", "needs-manual"],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    return {
+      ok: false,
+      error: `Issue creation failed (${response.status}): ${errorBody}`,
+    };
+  }
+
+  const data = await response.json() as { html_url?: string };
+  return { ok: true, url: data.html_url };
 }
 
 async function processFixes(request: FixRequest): Promise<FixResult> {
@@ -158,50 +265,80 @@ async function processFixes(request: FixRequest): Promise<FixResult> {
     },
   };
 
-  for (const failure of request.failures) {
-    if (failure.type === "format" && failure.files) {
-      const formatResult = await runDenoFmt(request.path, failure.files);
+  let repo: RepoInfo | null = null;
+  try {
+    repo = parseRepository(request.repository);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    result.errors.push({ type: "build", error: errorMessage });
+    result.summary.errorCount++;
+    result.ok = false;
+    return result;
+  }
 
-      if (formatResult.success) {
+  const fixableFailures = request.failures.filter((failure) =>
+    FIXABLE_TYPES.includes(failure.type)
+  );
+  const manualFailures = request.failures.filter((failure) =>
+    !FIXABLE_TYPES.includes(failure.type)
+  );
+
+  if (fixableFailures.length > 0) {
+    const fixTypes = Array.from(
+      new Set(fixableFailures.map((failure) => failure.type)),
+    );
+    const files = fixableFailures.flatMap((failure) => failure.files ?? []);
+
+    const dispatchResult = await dispatchFixWorkflow(
+      repo,
+      request,
+      fixTypes,
+      files,
+    );
+
+    if (dispatchResult.ok) {
+      for (const fixType of fixTypes) {
+        const fixFiles = fixableFailures
+          .filter((failure) => failure.type === fixType)
+          .flatMap((failure) => failure.files ?? []);
         result.fixed.push({
-          type: "format",
-          files: failure.files,
-          details: formatResult.output,
+          type: fixType,
+          files: fixFiles,
+          details: "Workflow dispatched for auto-fix",
         });
         result.summary.fixedCount++;
-      } else {
-        result.errors.push({
-          type: "format",
-          error: formatResult.output,
-        });
-        result.summary.errorCount++;
-        result.ok = false;
-      }
-    } else if (failure.type === "lint" && failure.files) {
-      const lintResult = await runDenoLintFix(request.path, failure.files);
-
-      if (lintResult.success) {
-        result.fixed.push({
-          type: "lint",
-          files: failure.files,
-          details: lintResult.output,
-        });
-        result.summary.fixedCount++;
-      } else {
-        result.errors.push({
-          type: "lint",
-          error: lintResult.output,
-        });
-        result.summary.errorCount++;
-        result.ok = false;
       }
     } else {
-      // Test, security, build failures cannot be auto-fixed
-      result.skipped.push({
-        type: failure.type,
-        reason: `${failure.type} failures require manual intervention`,
-      });
-      result.summary.skippedCount++;
+      for (const fixType of fixTypes) {
+        result.errors.push({
+          type: fixType,
+          error: dispatchResult.error ?? "Workflow dispatch failed",
+        });
+        result.summary.errorCount++;
+      }
+      result.ok = false;
+    }
+  }
+
+  if (manualFailures.length > 0) {
+    const issueResult = await createManualIssue(repo, request, manualFailures);
+
+    for (const failure of manualFailures) {
+      if (issueResult.ok) {
+        result.skipped.push({
+          type: failure.type,
+          reason: `Manual review required. Issue: ${issueResult.url ?? ""}`
+            .trim(),
+        });
+        result.summary.skippedCount++;
+      } else {
+        result.errors.push({
+          type: failure.type,
+          error: issueResult.error ?? "Issue creation failed",
+        });
+        result.summary.errorCount++;
+        result.ok = false;
+      }
     }
   }
 

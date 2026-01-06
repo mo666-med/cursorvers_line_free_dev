@@ -40,6 +40,19 @@ Layer 3: Manus完全介入（最終手段）
 | `yaml_syntax` | yamllint | `fix-yaml-syntax.sh` | ~30秒 |
 | `invalid_jwt` | grep | 手動（GitHub Issue作成） | - |
 
+### コード自動修正（format/lint）
+
+- `supabase/functions/manus-code-fixer` が GitHub Actions の失敗通知を受信
+- Edge Function から `manus-code-fixer.yml` を `workflow_dispatch` で起動
+- `deno fmt` / `deno lint --fix` を実行して自動コミット
+- 必要なSecrets: `MANUS_GITHUB_TOKEN`（GitHub API 呼び出し + Push）、`MANUS_FIXER_API_KEY`（Edge Function 認証用）
+
+### Manus自動修繕フロー
+
+- 監査失敗時に `scripts/auto-fix/auto-fix-or-manus.sh` を実行
+- 自動修正できない場合は Manus タスクを作成
+- 生成したタスクは `orchestration/MANUS_AUTO_FIX_BRIEF.md` を使用
+
 ### 自動記録
 
 全ての実行結果は自動的にGitHubに記録されます：
