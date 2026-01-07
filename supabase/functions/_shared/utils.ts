@@ -1,11 +1,31 @@
 // supabase/functions/_shared/utils.ts
 // 共有ユーティリティ関数
 
+// ============================================
+// 共通定数
+// ============================================
+
+/** Discord メッセージ制限 (2000文字) */
+export const DISCORD_MESSAGE_LIMIT = 2000;
+
+/** Discord メッセージ分割時の安全マージン (100文字余裕) */
+export const DISCORD_SAFE_MESSAGE_LIMIT = 1900;
+
+/** LINE テキストメッセージ制限 (5000文字) */
+export const LINE_MESSAGE_LIMIT = 5000;
+
+/** 月額料金 (円) */
+export const MONTHLY_PRICE_YEN = 2980;
+
+// ============================================
+// ユーティリティ関数
+// ============================================
+
 /**
  * Discordの2000文字制限に対応するためのメッセージ分割
  * 改行 > スペース > 強制分割の順で分割点を探す
  */
-export function splitMessage(text: string, maxLength: number): string[] {
+export function splitMessage(text: string, maxLength = DISCORD_MESSAGE_LIMIT): string[] {
   const chunks: string[] = [];
   let remaining = text;
 

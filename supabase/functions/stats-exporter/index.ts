@@ -8,6 +8,7 @@ import {
   type SheetsClient,
 } from "../_shared/google-sheets.ts";
 import { createLogger } from "../_shared/logger.ts";
+import { MONTHLY_PRICE_YEN } from "../_shared/utils.ts";
 
 const log = createLogger("stats-exporter");
 
@@ -97,19 +98,24 @@ if (!SHEET_ID || !GOOGLE_SA_JSON) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+/** イベント取得対象期間（時間） */
+const EVENT_WINDOW_HOURS = 12;
+
 Deno.serve(async (req: Request): Promise<Response> => {
   const url = new URL(req.url);
   const mode = url.searchParams.get("mode") ?? "full";
 
   const now = new Date();
-  const twelveHoursAgo = new Date(now.getTime() - 12 * 60 * 60 * 1000);
+  const windowStart = new Date(
+    now.getTime() - EVENT_WINDOW_HOURS * 60 * 60 * 1000,
+  );
 
   const { data: events, error: eventsError } = await supabase
     .from("line_events")
     .select(
       "created_at,line_user_id,message_text,normalized_keyword,risk_level,contains_phi,membership_email,membership_tier,subscription_status,billing_cycle_anchor,tuition_credit_yen,stripe_customer_email,reply_success,error_code,metadata",
     )
-    .gte("created_at", twelveHoursAgo.toISOString())
+    .gte("created_at", windowStart.toISOString())
     .order("created_at", { ascending: true });
 
   if (eventsError) {
@@ -173,7 +179,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     member.membership_tier ?? "",
     member.subscription_status ?? "",
     member.active_months ?? 0,
-    (member.active_months ?? 0) * 2980,
+    (member.active_months ?? 0) * MONTHLY_PRICE_YEN,
     member.next_billing_at ?? "",
     member.last_payment_at ?? "",
     member.stripe_customer_email ?? "",

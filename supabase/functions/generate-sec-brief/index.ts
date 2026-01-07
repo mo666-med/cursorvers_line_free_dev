@@ -4,11 +4,12 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { extractErrorMessage } from "../_shared/error-utils.ts";
-import { createLogger } from "../_shared/logger.ts";
 import {
   createCorsPreflightResponse,
   getCorsOrigin,
 } from "../_shared/http-utils.ts";
+import { createLogger } from "../_shared/logger.ts";
+import { DISCORD_SAFE_MESSAGE_LIMIT, splitMessage } from "../_shared/utils.ts";
 
 const log = createLogger("generate-sec-brief");
 
@@ -182,32 +183,6 @@ const GENERATE_API_KEY = Deno.env.get("GENERATE_SEC_BRIEF_API_KEY");
 const DISCORD_BOT_TOKEN = Deno.env.get("DISCORD_BOT_TOKEN");
 const SEC_BRIEF_CHANNEL_ID = Deno.env.get("SEC_BRIEF_CHANNEL_ID");
 
-// Discordメッセージ分割（2000文字制限対応）
-function splitMessage(text: string, maxLength: number): string[] {
-  const chunks: string[] = [];
-  let remaining = text;
-
-  while (remaining.length > 0) {
-    if (remaining.length <= maxLength) {
-      chunks.push(remaining);
-      break;
-    }
-
-    let splitIndex = remaining.lastIndexOf("\n", maxLength);
-    if (splitIndex === -1 || splitIndex < maxLength / 2) {
-      splitIndex = remaining.lastIndexOf(" ", maxLength);
-    }
-    if (splitIndex === -1 || splitIndex < maxLength / 2) {
-      splitIndex = maxLength;
-    }
-
-    chunks.push(remaining.substring(0, splitIndex));
-    remaining = remaining.substring(splitIndex).trimStart();
-  }
-
-  return chunks;
-}
-
 // Discordに自動投稿
 async function postToDiscord(bodyMarkdown: string): Promise<boolean> {
   if (!DISCORD_BOT_TOKEN || !SEC_BRIEF_CHANNEL_ID) {
@@ -215,7 +190,7 @@ async function postToDiscord(bodyMarkdown: string): Promise<boolean> {
     return false;
   }
 
-  const chunks = splitMessage(bodyMarkdown, 1900);
+  const chunks = splitMessage(bodyMarkdown, DISCORD_SAFE_MESSAGE_LIMIT);
 
   for (const chunk of chunks) {
     const res = await fetch(

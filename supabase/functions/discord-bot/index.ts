@@ -9,7 +9,11 @@ import nacl from "tweetnacl";
 import { extractErrorMessage } from "../_shared/error-utils.ts";
 import { createLogger } from "../_shared/logger.ts";
 import { EMAIL_REGEX } from "../_shared/validation-utils.ts";
-import { hexToUint8Array, splitMessage } from "../_shared/utils.ts";
+import {
+  DISCORD_SAFE_MESSAGE_LIMIT,
+  hexToUint8Array,
+  splitMessage,
+} from "../_shared/utils.ts";
 
 const log = createLogger("discord-bot");
 
@@ -326,8 +330,9 @@ async function handleSecBriefLatest(
 
   // Discordメッセージは2000文字制限があるため、長い場合は切り詰める
   let content = data.body_markdown;
-  if (content.length > 1900) {
-    content = content.substring(0, 1900) + "\n\n... (続きあり)";
+  if (content.length > DISCORD_SAFE_MESSAGE_LIMIT) {
+    content = content.substring(0, DISCORD_SAFE_MESSAGE_LIMIT) +
+      "\n\n... (続きあり)";
   }
 
   return jsonResponse({
@@ -396,7 +401,7 @@ async function handleSecBriefPublish(
   // Discordの#sec-briefチャンネルにメッセージを投稿
   // 2000文字制限を考慮して分割投稿
   const bodyMarkdown = data.body_markdown;
-  const chunks = splitMessage(bodyMarkdown, 1900);
+  const chunks = splitMessage(bodyMarkdown, DISCORD_SAFE_MESSAGE_LIMIT);
 
   for (let i = 0; i < chunks.length; i++) {
     const sendRes = await fetch(
