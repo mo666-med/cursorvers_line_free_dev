@@ -45,7 +45,10 @@ async function sendDiscordEmbed(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         username,
-        embeds: [{ ...embed, timestamp: embed.timestamp ?? new Date().toISOString() }],
+        embeds: [{
+          ...embed,
+          timestamp: embed.timestamp ?? new Date().toISOString(),
+        }],
       }),
       signal: controller.signal,
     });

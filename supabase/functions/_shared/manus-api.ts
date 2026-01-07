@@ -644,10 +644,14 @@ export async function diagnoseWithManusAI(
 /**
  * AI診断用のプロンプトを構築
  */
-function buildDiagnosisPrompt(auditResult: Parameters<typeof buildRemediationPrompt>[0]): string {
+function buildDiagnosisPrompt(
+  auditResult: Parameters<typeof buildRemediationPrompt>[0],
+): string {
   const sanitizedWarnings = {
     cardInventory: sanitizeWarnings(auditResult.checks.cardInventory.warnings),
-    broadcastSuccess: sanitizeWarnings(auditResult.checks.broadcastSuccess.warnings),
+    broadcastSuccess: sanitizeWarnings(
+      auditResult.checks.broadcastSuccess.warnings,
+    ),
     databaseHealth: auditResult.checks.databaseHealth
       ? sanitizeWarnings(auditResult.checks.databaseHealth.warnings)
       : [],

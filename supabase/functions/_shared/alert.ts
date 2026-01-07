@@ -17,7 +17,9 @@ interface NotifyOptions {
  */
 export async function notifyDiscord(options: NotifyOptions): Promise<void> {
   if (!DISCORD_WEBHOOK) {
-    console.warn("DISCORD_SYSTEM_WEBHOOK not configured, skipping notification");
+    console.warn(
+      "DISCORD_SYSTEM_WEBHOOK not configured, skipping notification",
+    );
     return;
   }
 

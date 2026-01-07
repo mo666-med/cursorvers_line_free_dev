@@ -70,7 +70,9 @@ function diagnoseIssues(auditResult: AuditResult): Diagnosis {
     issues.push({
       type: "card_inventory_low",
       description: `${lowThemes.length}テーマでカード在庫が不足`,
-      rootCause: `在庫不足テーマ: ${lowThemes.map((t) => `${t.theme}(${t.ready_cards}枚)`).join(", ")}`,
+      rootCause: `在庫不足テーマ: ${
+        lowThemes.map((t) => `${t.theme}(${t.ready_cards}枚)`).join(", ")
+      }`,
       suggestedActions: ["generate_cards"],
       priority: lowThemes.some((t) => t.ready_cards < 10) ? 9 : 6,
     });
@@ -137,7 +139,12 @@ function createBaseResult(): AuditResult {
         passed: true,
         warnings: [],
         details: [
-          { theme: "ai_gov", ready_cards: 100, used_cards: 50, total_cards: 150 },
+          {
+            theme: "ai_gov",
+            ready_cards: 100,
+            used_cards: 50,
+            total_cards: 150,
+          },
           { theme: "tax", ready_cards: 80, used_cards: 20, total_cards: 100 },
         ],
       },
@@ -190,7 +197,9 @@ Deno.test("simulation - カード在庫不足（軽度）", () => {
   console.log(`  - 問題: ${diagnosis.issues[0].description}`);
   console.log(`  - 根本原因: ${diagnosis.issues[0].rootCause}`);
   console.log(`  - 重大度: ${diagnosis.severity}`);
-  console.log(`  - 推奨アクション: ${diagnosis.issues[0].suggestedActions.join(", ")}`);
+  console.log(
+    `  - 推奨アクション: ${diagnosis.issues[0].suggestedActions.join(", ")}`,
+  );
   console.log("  → 計画: カード生成ワークフローをトリガー\n");
 });
 
@@ -222,7 +231,10 @@ Deno.test("simulation - LINE Webhook障害", () => {
     passed: false,
     warnings: ["Webhook接続エラー"],
     details: {
-      webhookHealth: { passed: false, error: "Connection timeout after 5000ms" },
+      webhookHealth: {
+        passed: false,
+        error: "Connection timeout after 5000ms",
+      },
       apiHealth: { passed: true },
       googleSheetsSync: { passed: true },
       landingPageAccess: { passed: true },
@@ -244,7 +256,9 @@ Deno.test("simulation - LINE Webhook障害", () => {
   console.log(`  - 根本原因: ${diagnosis.issues[0].rootCause}`);
   console.log(`  - 重大度: ${diagnosis.severity} 🚨 最優先対応`);
   console.log(`  - 優先度: ${diagnosis.issues[0].priority}/10`);
-  console.log(`  - 推奨アクション: ${diagnosis.issues[0].suggestedActions.join(", ")}`);
+  console.log(
+    `  - 推奨アクション: ${diagnosis.issues[0].suggestedActions.join(", ")}`,
+  );
   console.log("  → 計画: 1) 関数再デプロイ 2) シークレット確認\n");
 });
 

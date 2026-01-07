@@ -123,7 +123,9 @@ Deno.test("failsafe - 正常レスポンス時もフォールバック（即座�
   assertEquals(result.success, true);
   assertEquals(result.fallbackUsed, true);
 
-  console.log("\n✅ 正常レスポンス → タスク作成成功、フォールバック使用（即座応答）");
+  console.log(
+    "\n✅ 正常レスポンス → タスク作成成功、フォールバック使用（即座応答）",
+  );
   console.log("   システム継続: YES");
 });
 

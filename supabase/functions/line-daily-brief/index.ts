@@ -323,7 +323,9 @@ async function recordBroadcastHistory(
 
   // Add new columns if they exist
   if (data.theme) insertData["theme"] = data.theme;
-  if (data.broadcastStatus) insertData["broadcast_status"] = data.broadcastStatus;
+  if (data.broadcastStatus) {
+    insertData["broadcast_status"] = data.broadcastStatus;
+  }
   if (data.lineRequestId) insertData["line_request_id"] = data.lineRequestId;
   if (data.lineResponseStatus !== null) {
     insertData["line_response_status"] = data.lineResponseStatus;
