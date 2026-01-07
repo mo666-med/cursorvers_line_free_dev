@@ -39,23 +39,36 @@ const supabase: SupabaseClient = createClient(
   SUPABASE_SERVICE_ROLE_KEY,
 );
 
+const DISCORD_TIMEOUT_MS = 5000;
+
 async function sendDiscordMessage(message: string): Promise<void> {
   if (!DISCORD_WEBHOOK) {
     log.info("Discord webhook not configured, skipping notification");
     return;
   }
 
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), DISCORD_TIMEOUT_MS);
+
   try {
     const response = await fetch(DISCORD_WEBHOOK, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: message }),
+      signal: controller.signal,
     });
     if (!response.ok) {
       log.warn("Discord notification failed", { status: response.status });
     }
   } catch (err) {
-    log.error("Failed to send Discord message", errorToContext(err));
+    const isTimeout = err instanceof DOMException && err.name === "AbortError";
+    if (isTimeout) {
+      log.warn("Discord notification timed out", { timeoutMs: DISCORD_TIMEOUT_MS });
+    } else {
+      log.error("Failed to send Discord message", errorToContext(err));
+    }
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

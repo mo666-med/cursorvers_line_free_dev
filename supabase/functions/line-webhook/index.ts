@@ -1135,15 +1135,26 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const events = body.events ?? [];
 
-  // 全イベントを処理してから200を返す
-  try {
-    await Promise.all(events.map((ev) => handleEvent(ev)));
-    log.debug("All events processed", { eventCount: events.length });
-  } catch (err) {
-    log.error("Event processing error", {
-      errorMessage: extractErrorMessage(err),
-    });
+  // 全イベントを処理してから200を返す（1つの失敗が他に影響しないようallSettled使用）
+  const results = await Promise.allSettled(events.map((ev) => handleEvent(ev)));
+
+  // 失敗したイベントを個別にログ
+  const failures = results.filter(
+    (r): r is PromiseRejectedResult => r.status === "rejected",
+  );
+  if (failures.length > 0) {
+    for (const failure of failures) {
+      log.error("Event processing failed", {
+        errorMessage: extractErrorMessage(failure.reason),
+      });
+    }
   }
+
+  log.debug("All events processed", {
+    eventCount: events.length,
+    successCount: results.filter((r) => r.status === "fulfilled").length,
+    failureCount: failures.length,
+  });
 
   return new Response("OK", { status: 200 });
 });

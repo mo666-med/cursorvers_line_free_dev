@@ -16,6 +16,7 @@ const DISCORD_ROLE_ID = Deno.env.get("DISCORD_ROLE_ID") ?? "";
 // Rate Limit リトライ設定
 const MAX_RETRIES = 3;
 const DEFAULT_RETRY_DELAY_MS = 1000;
+const DEFAULT_TIMEOUT_MS = 5000;
 
 interface DiscordResult {
   success: boolean;
@@ -23,32 +24,47 @@ interface DiscordResult {
 }
 
 /**
- * Rate Limit対応のfetchラッパー
+ * Rate Limit対応のfetchラッパー（タイムアウト付き）
  * 429エラー時はRetry-Afterを尊重して自動リトライ
+ * @param url リクエストURL
+ * @param options fetchオプション
+ * @param retries リトライ回数
+ * @param timeoutMs タイムアウト（ミリ秒）
  */
 async function fetchWithRateLimit(
   url: string,
   options: RequestInit,
   retries: number = MAX_RETRIES,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<Response> {
-  const response = await fetch(url, options);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-  if (response.status === 429 && retries > 0) {
-    const retryAfterHeader = response.headers.get("Retry-After");
-    const retryAfterMs = retryAfterHeader
-      ? parseFloat(retryAfterHeader) * 1000
-      : DEFAULT_RETRY_DELAY_MS;
-
-    log.warn("Discord rate limited, retrying", {
-      retryAfterMs,
-      retriesLeft: retries - 1,
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
     });
 
-    await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
-    return fetchWithRateLimit(url, options, retries - 1);
-  }
+    if (response.status === 429 && retries > 0) {
+      const retryAfterHeader = response.headers.get("Retry-After");
+      const retryAfterMs = retryAfterHeader
+        ? parseFloat(retryAfterHeader) * 1000
+        : DEFAULT_RETRY_DELAY_MS;
 
-  return response;
+      log.warn("Discord rate limited, retrying", {
+        retryAfterMs,
+        retriesLeft: retries - 1,
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
+      return fetchWithRateLimit(url, options, retries - 1, timeoutMs);
+    }
+
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 /**

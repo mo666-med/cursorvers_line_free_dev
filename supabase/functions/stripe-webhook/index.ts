@@ -31,6 +31,7 @@ import {
   savePaymentFromCharge,
   savePaymentFromCheckout,
 } from "./payment-history.ts";
+import { notifyStripeEvent } from "../_shared/n8n-notify.ts";
 
 const log = createLogger("stripe-webhook");
 
@@ -248,13 +249,25 @@ Deno.serve(async (req) => {
   const body = await req.text();
   const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
 
+  // 署名ヘッダーの検証（必須）
+  if (!signature) {
+    log.warn("Missing Stripe-Signature header");
+    return new Response("Missing signature", { status: 400 });
+  }
+
+  // 環境変数の検証（サーバー設定エラー）
+  if (!webhookSecret) {
+    log.error("STRIPE_WEBHOOK_SECRET not configured");
+    return new Response("Server configuration error", { status: 500 });
+  }
+
   let event;
 
   try {
     event = await stripe.webhooks.constructEventAsync(
       body,
-      signature!,
-      webhookSecret!,
+      signature,
+      webhookSecret,
       undefined,
       cryptoProvider,
     );
@@ -503,6 +516,21 @@ Deno.serve(async (req) => {
           log.info("Member joined", {
             email: customerEmail,
             tier: membershipTier,
+          });
+
+          // n8n経由でDiscord通知（非同期・失敗しても続行）
+          notifyStripeEvent(
+            event.type,
+            customerEmail,
+            customerName,
+            session.amount_total,
+            session.currency ?? "jpy",
+            mode ?? "payment",
+            session.id,
+          ).catch((err) => {
+            log.warn("n8n notification failed", {
+              error: extractErrorMessage(err),
+            });
           });
 
           // 支払い履歴を保存
