@@ -63,7 +63,9 @@ async function sendDiscordMessage(message: string): Promise<void> {
   } catch (err) {
     const isTimeout = err instanceof DOMException && err.name === "AbortError";
     if (isTimeout) {
-      log.warn("Discord notification timed out", { timeoutMs: DISCORD_TIMEOUT_MS });
+      log.warn("Discord notification timed out", {
+        timeoutMs: DISCORD_TIMEOUT_MS,
+      });
     } else {
       log.error("Failed to send Discord message", errorToContext(err));
     }
