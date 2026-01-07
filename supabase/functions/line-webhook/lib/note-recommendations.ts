@@ -452,7 +452,7 @@ export function getRecommendationsForKeyword(
 export function getFirstArticle(keyword: string): NoteArticle | null {
   const course = getRecommendationsForKeyword(keyword);
   if (!course || course.articles.length === 0) return null;
-  return course.articles[0];
+  return course.articles[0] ?? null;
 }
 
 /**

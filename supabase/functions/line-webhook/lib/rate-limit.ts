@@ -47,8 +47,9 @@ export async function getHourlyUsageCount(
 
   // 上限以上使っている場合、最初の利用から1時間後を計算
   let nextAvailable: Date | null = null;
-  if (count >= MAX_POLISH_PER_HOUR && data && data.length > 0) {
-    const oldestUsage = new Date(data[0].created_at);
+  const firstRecord = data?.[0];
+  if (count >= MAX_POLISH_PER_HOUR && firstRecord) {
+    const oldestUsage = new Date(firstRecord.created_at);
     nextAvailable = new Date(oldestUsage.getTime() + 60 * 60 * 1000);
   }
 

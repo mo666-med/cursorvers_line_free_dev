@@ -72,7 +72,7 @@ export async function replyText(
     text: withSafetyFooter(text),
   };
   if (quickReply) {
-    message.quickReply = quickReply;
+    message["quickReply"] = quickReply;
   }
   const res = await fetch("https://api.line.me/v2/bot/message/reply", {
     method: "POST",

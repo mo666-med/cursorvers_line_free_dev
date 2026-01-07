@@ -40,6 +40,7 @@ export function buildCourseEntryMessage(keyword: DiagnosisKeyword): string {
     const maxArticles = Math.min(course.articles.length, 5);
     for (let i = 0; i < maxArticles; i++) {
       const article = course.articles[i];
+      if (!article) continue;
       body += `${i + 1}. ${article.title}\n`;
       if (article.url) {
         body += `${article.url}\n`;

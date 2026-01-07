@@ -542,18 +542,19 @@ export function getNextQuestion(
   }
   if (layer === 3) {
     // layer3 は layer2 の回答に基づいて分岐
-    const interest = answers[1]; // layer2 の回答
+    const interest = answers[1] ?? ""; // layer2 の回答
     if ("text" in flow.layer3) {
       return flow.layer3 as DiagnosisQuestion;
     }
     const layer3Questions = flow.layer3 as Record<string, DiagnosisQuestion>;
-    const question = layer3Questions[interest];
+    const question = interest ? layer3Questions[interest] : undefined;
     if (!question) {
       log.error("layer3 question not found for interest", { interest });
       // フォールバック: 最初の選択肢を返す
       const keys = Object.keys(layer3Questions);
-      if (keys.length > 0) {
-        return layer3Questions[keys[0]];
+      const firstKey = keys[0];
+      if (firstKey !== undefined) {
+        return layer3Questions[firstKey] ?? null;
       }
     }
     return question ?? null;

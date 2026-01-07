@@ -22,7 +22,10 @@ export function generateVerificationCode(): string {
 
   let code = "";
   for (let i = 0; i < CODE_LENGTH; i++) {
-    code += CODE_CHARS[randomValues[i] % CODE_CHARS.length];
+    const randomValue = randomValues[i];
+    if (randomValue !== undefined) {
+      code += CODE_CHARS[randomValue % CODE_CHARS.length];
+    }
   }
   return code;
 }
