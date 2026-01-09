@@ -7,6 +7,8 @@ const log = createLogger("stripe-consistency-check");
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const STRIPE_CONSISTENCY_SMOKE_MODE =
+  Deno.env.get("STRIPE_CONSISTENCY_SMOKE_MODE") === "true";
 
 const rawWindowHours = Number(
   Deno.env.get("STRIPE_RECON_WINDOW_HOURS") ?? "24",
@@ -21,7 +23,17 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-Deno.serve(async () => {
+Deno.serve(async (req: Request) => {
+  const isSmokeRequest = STRIPE_CONSISTENCY_SMOKE_MODE &&
+    req.headers.get("x-smoke-test") === "true";
+  if (isSmokeRequest) {
+    log.info("Stripe consistency smoke mode");
+    return new Response(
+      JSON.stringify({ ok: true, smoke: true, windowHours: WINDOW_HOURS }),
+      { headers: { "Content-Type": "application/json" } },
+    );
+  }
+
   const startTime = Date.now();
   const windowStart = new Date(
     Date.now() - WINDOW_HOURS * 60 * 60 * 1000,

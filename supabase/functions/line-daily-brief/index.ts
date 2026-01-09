@@ -69,6 +69,8 @@ const SUPABASE_SERVICE_ROLE_KEY = getEnv("SUPABASE_SERVICE_ROLE_KEY");
 const LINE_CHANNEL_ACCESS_TOKEN = getEnv("LINE_CHANNEL_ACCESS_TOKEN");
 // Use API key for authentication (same pattern as generate-sec-brief)
 const LINE_DAILY_BRIEF_API_KEY = Deno.env.get("LINE_DAILY_BRIEF_API_KEY");
+const LINE_DAILY_BRIEF_SMOKE_MODE =
+  Deno.env.get("LINE_DAILY_BRIEF_SMOKE_MODE") === "true";
 
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: {
@@ -413,6 +415,19 @@ Deno.serve(async (req) => {
       status: 401,
       headers: { "Content-Type": "application/json" },
     });
+  }
+
+  const isSmokeRequest = LINE_DAILY_BRIEF_SMOKE_MODE &&
+    req.headers.get("x-smoke-test") === "true";
+  if (isSmokeRequest) {
+    log.info("Line daily brief smoke mode");
+    return new Response(
+      JSON.stringify({ success: true, smoke: true, cardSent: false }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 
   try {

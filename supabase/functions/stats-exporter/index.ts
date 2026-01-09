@@ -88,20 +88,42 @@ const MEMBERSHIP_TAB = Deno.env.get("LINE_LOG_MEMBERSHIP_TAB") ??
   "membership_status";
 const ALERT_TAB = Deno.env.get("LINE_LOG_ALERT_TAB") ?? "alerts";
 const GOOGLE_SA_JSON = Deno.env.get("GOOGLE_SA_JSON");
+const STATS_EXPORTER_SMOKE_MODE =
+  Deno.env.get("STATS_EXPORTER_SMOKE_MODE") === "true";
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  throw new Error("Missing Supabase configuration");
-}
-if (!SHEET_ID || !GOOGLE_SA_JSON) {
-  throw new Error("Missing Google Sheets configuration");
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const supabase = SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+  : null;
 
 /** イベント取得対象期間（時間） */
 const EVENT_WINDOW_HOURS = 12;
 
 Deno.serve(async (req: Request): Promise<Response> => {
+  const isSmokeRequest = STATS_EXPORTER_SMOKE_MODE &&
+    req.headers.get("x-smoke-test") === "true";
+  if (isSmokeRequest) {
+    log.info("Stats exporter smoke mode");
+    return new Response(
+      JSON.stringify({ ok: true, smoke: true }),
+      { headers: { "Content-Type": "application/json" } },
+    );
+  }
+
+  if (!supabase) {
+    log.error("Missing Supabase configuration");
+    return new Response(
+      JSON.stringify({ ok: false, error: "Missing Supabase configuration" }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  if (!SHEET_ID || !GOOGLE_SA_JSON) {
+    log.error("Missing Google Sheets configuration");
+    return new Response(
+      JSON.stringify({ ok: false, error: "Missing Google Sheets configuration" }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
+
   const url = new URL(req.url);
   const mode = url.searchParams.get("mode") ?? "full";
 

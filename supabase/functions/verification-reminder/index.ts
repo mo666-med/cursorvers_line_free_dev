@@ -24,6 +24,8 @@ const log = createLogger("verification-reminder");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   "";
+const VERIFICATION_REMINDER_SMOKE_MODE =
+  Deno.env.get("VERIFICATION_REMINDER_SMOKE_MODE") === "true";
 
 // リマインドスケジュール（日数）
 const REMINDER_DAYS = {
@@ -70,6 +72,16 @@ Deno.serve(async (req) => {
   if (authHeader !== `Bearer ${CRON_SECRET}`) {
     log.warn("Unauthorized access attempt");
     return new Response("Unauthorized", { status: 401 });
+  }
+
+  const isSmokeRequest = VERIFICATION_REMINDER_SMOKE_MODE &&
+    req.headers.get("x-smoke-test") === "true";
+  if (isSmokeRequest) {
+    log.info("Verification reminder smoke mode");
+    return new Response(
+      JSON.stringify({ success: true, smoke: true }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
   }
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {

@@ -26,6 +26,8 @@ interface HealthCheckResponse {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const DISCORD_WEBHOOK = Deno.env.get("DISCORD_SYSTEM_WEBHOOK");
+const HEALTH_CHECK_SMOKE_MODE =
+  Deno.env.get("HEALTH_CHECK_SMOKE_MODE") === "true";
 const HEALTH_WINDOW_MINUTES = Number(
   Deno.env.get("HEALTH_WINDOW_MINUTES") ?? "360",
 ); // default 6h
@@ -74,7 +76,17 @@ async function sendDiscordMessage(message: string): Promise<void> {
   }
 }
 
-Deno.serve(async (): Promise<Response> => {
+Deno.serve(async (req: Request): Promise<Response> => {
+  const isSmokeRequest = HEALTH_CHECK_SMOKE_MODE &&
+    req.headers.get("x-smoke-test") === "true";
+  if (isSmokeRequest) {
+    log.info("Health check smoke mode");
+    return new Response(
+      JSON.stringify({ ok: true, smoke: true }),
+      { headers: { "Content-Type": "application/json" } },
+    );
+  }
+
   const startTime = Date.now();
   const windowStart = new Date(Date.now() - HEALTH_WINDOW_MINUTES * 60 * 1000);
 
