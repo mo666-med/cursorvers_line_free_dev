@@ -323,6 +323,8 @@ async function recordRequest(
 Deno.serve(async (req) => {
   try {
     const signature = req.headers.get("Stripe-Signature");
+    const smokeTest = req.headers.get("x-smoke-test") === "true";
+    const smokeMode = Deno.env.get("STRIPE_WEBHOOK_SMOKE_MODE") === "true";
     const body = await req.text();
     const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -347,26 +349,6 @@ Deno.serve(async (req) => {
       return new Response("Server configuration error", { status: 500 });
     }
 
-    if (!supabaseUrl || !supabaseServiceRoleKey) {
-      log.error("Supabase configuration missing");
-      await notifyDiscord({
-        title: "MANUS ALERT: Supabase config missing",
-        message: "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not configured",
-        severity: "critical",
-      });
-      return new Response("Server configuration error", { status: 500 });
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
-    const isAllowed = await checkRateLimit(supabase, clientIP);
-    if (!isAllowed) {
-      log.warn("Rate limit exceeded", { requestId, clientIP });
-      return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
-        status: 429,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
     // 署名ヘッダーの検証（必須）
     if (!signature) {
       log.warn("Missing Stripe-Signature header", { requestId, clientIP });
@@ -374,10 +356,6 @@ Deno.serve(async (req) => {
         title: "MANUS ALERT: Stripe webhook missing signature",
         message: "Missing Stripe-Signature header",
         severity: "warning",
-      });
-      await recordRequest(supabase, clientIP, false, {
-        reason: "missing_signature",
-        requestId,
       });
       return new Response("Missing signature", { status: 400 });
     }
@@ -400,11 +378,37 @@ Deno.serve(async (req) => {
         message: errorMessage,
         severity: "error",
       });
-      await recordRequest(supabase, clientIP, false, {
-        reason: "invalid_signature",
-        requestId,
-      });
       return new Response(errorMessage, { status: 400 });
+    }
+
+    if (smokeMode && smokeTest) {
+      log.info("Stripe webhook smoke test ok", {
+        requestId,
+        eventType: event.type,
+      });
+      return new Response(JSON.stringify({ received: true, smoke: true }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+      log.error("Supabase configuration missing");
+      await notifyDiscord({
+        title: "MANUS ALERT: Supabase config missing",
+        message: "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not configured",
+        severity: "critical",
+      });
+      return new Response("Server configuration error", { status: 500 });
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+    const isAllowed = await checkRateLimit(supabase, clientIP);
+    if (!isAllowed) {
+      log.warn("Rate limit exceeded", { requestId, clientIP });
+      return new Response(JSON.stringify({ error: "Rate limit exceeded" }), {
+        status: 429,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     await recordRequest(supabase, clientIP, true, {

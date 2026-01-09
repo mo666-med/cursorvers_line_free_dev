@@ -34,6 +34,9 @@ jobs:
           LINE_CHANNEL_SECRET: ${{ secrets.LINE_CHANNEL_SECRET }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          STRIPE_WEBHOOK_SECRET: smoke-test-secret
+          STRIPE_WEBHOOK_SMOKE_MODE: "true"
+          STRIPE_API_KEY: sk_test_smoke
           DISCORD_WEBHOOK_URL: https://example.com
           DISCORD_SYSTEM_WEBHOOK: https://example.com
         run: |
@@ -43,10 +46,10 @@ jobs:
           : "${SUPABASE_URL:?SUPABASE_URL missing}"
           : "${SUPABASE_SERVICE_ROLE_KEY:?SUPABASE_SERVICE_ROLE_KEY missing}"
 
-          body='{"events":[]}'
-          signature=$(printf "%s" "$body" | openssl dgst -sha256 -hmac "$LINE_CHANNEL_SECRET" -binary | openssl base64 -A)
+          line_body='{"events":[]}'
+          line_signature=$(printf "%s" "$line_body" | openssl dgst -sha256 -hmac "$LINE_CHANNEL_SECRET" -binary | openssl base64 -A)
 
-          run_smoke() {
+          run_line_smoke() {
             local name="$1"
             local file="$2"
             local log_file="/tmp/${name}.log"
@@ -59,9 +62,9 @@ jobs:
             for i in 1 2 3 4 5; do
               sleep 1
               status=$(curl -s -o "$body_file" -w "%{http_code}" \
-                -H "x-line-signature: $signature" \
+                -H "x-line-signature: $line_signature" \
                 -H "content-type: application/json" \
-                -d "$body" \
+                -d "$line_body" \
                 http://localhost:8000/ || true)
               if [ "$status" != "000" ]; then
                 break
@@ -88,8 +91,56 @@ jobs:
             fi
           }
 
-          run_smoke "line-bot" "supabase/functions/line-bot/index.ts"
-          run_smoke "line-webhook" "supabase/functions/line-webhook/index.ts"
+          run_stripe_smoke() {
+            local name="$1"
+            local file="$2"
+            local log_file="/tmp/${name}.log"
+            local body_file="/tmp/${name}-body.txt"
+            local timestamp
+            local payload
+            local signature
+            local stripe_header
+
+            timestamp=$(date +%s)
+            payload="${timestamp}.${stripe_body}"
+            signature=$(printf "%s" "$payload" | openssl dgst -sha256 -hmac "$STRIPE_WEBHOOK_SECRET" -hex | sed 's/^.* //')
+            stripe_header="t=${timestamp},v1=${signature}"
+
+            deno run --allow-env --allow-net "$file" >"$log_file" 2>&1 &
+            local pid=$!
+
+            local status=000
+            for i in 1 2 3 4 5; do
+              sleep 1
+              status=$(curl -s -o "$body_file" -w "%{http_code}" \
+                -H "Stripe-Signature: $stripe_header" \
+                -H "x-smoke-test: true" \
+                -H "content-type: application/json" \
+                -d "$stripe_body" \
+                http://localhost:8000/ || true)
+              if [ "$status" != "000" ]; then
+                break
+              fi
+            done
+
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+
+            if [ "$status" != "200" ]; then
+              echo "${name}: Unexpected status: $status"
+              echo "Response:"
+              cat "$body_file" || true
+              echo "Log:"
+              tail -n 50 "$log_file" || true
+              exit 1
+            fi
+          }
+
+          stripe_body='{"id":"evt_smoke","object":"event","type":"test.event","data":{"object":{}}}'
+
+          run_line_smoke "line-bot" "supabase/functions/line-bot/index.ts"
+          run_line_smoke "line-webhook" "supabase/functions/line-webhook/index.ts"
+          run_stripe_smoke "stripe-webhook" "supabase/functions/stripe-webhook/index.ts"
 
   deploy:
     needs: [line-bot-smoke]
