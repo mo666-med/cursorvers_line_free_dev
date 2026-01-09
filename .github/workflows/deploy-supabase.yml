@@ -46,38 +46,50 @@ jobs:
           body='{"events":[]}'
           signature=$(printf "%s" "$body" | openssl dgst -sha256 -hmac "$LINE_CHANNEL_SECRET" -binary | openssl base64 -A)
 
-          deno run --allow-env --allow-net supabase/functions/line-bot/index.ts >/tmp/line-bot.log 2>&1 &
-          pid=$!
-          cleanup() { kill "$pid" 2>/dev/null || true; }
-          trap cleanup EXIT
+          run_smoke() {
+            local name="$1"
+            local file="$2"
+            local log_file="/tmp/${name}.log"
+            local body_file="/tmp/${name}-body.txt"
 
-          status=000
-          for i in 1 2 3 4 5; do
-            sleep 1
-            status=$(curl -s -o /tmp/line-bot-body.txt -w "%{http_code}" \
-              -H "x-line-signature: $signature" \
-              -H "content-type: application/json" \
-              -d "$body" \
-              http://localhost:8000/ || true)
-            if [ "$status" != "000" ]; then
-              break
+            deno run --allow-env --allow-net "$file" >"$log_file" 2>&1 &
+            local pid=$!
+
+            local status=000
+            for i in 1 2 3 4 5; do
+              sleep 1
+              status=$(curl -s -o "$body_file" -w "%{http_code}" \
+                -H "x-line-signature: $signature" \
+                -H "content-type: application/json" \
+                -d "$body" \
+                http://localhost:8000/ || true)
+              if [ "$status" != "000" ]; then
+                break
+              fi
+            done
+
+            kill "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+
+            if [ "$status" != "200" ]; then
+              echo "${name}: Unexpected status: $status"
+              echo "Response:"
+              cat "$body_file" || true
+              echo "Log:"
+              tail -n 50 "$log_file" || true
+              exit 1
             fi
-          done
 
-          if [ "$status" != "200" ]; then
-            echo "Unexpected status: $status"
-            echo "Response:"
-            cat /tmp/line-bot-body.txt || true
-            echo "Log:"
-            tail -n 50 /tmp/line-bot.log || true
-            exit 1
-          fi
+            local response_body
+            response_body=$(cat "$body_file" || true)
+            if [ "$response_body" != "OK" ]; then
+              echo "${name}: Unexpected body: $response_body"
+              exit 1
+            fi
+          }
 
-          response_body=$(cat /tmp/line-bot-body.txt || true)
-          if [ "$response_body" != "OK" ]; then
-            echo "Unexpected body: $response_body"
-            exit 1
-          fi
+          run_smoke "line-bot" "supabase/functions/line-bot/index.ts"
+          run_smoke "line-webhook" "supabase/functions/line-webhook/index.ts"
 
   deploy:
     needs: [line-bot-smoke]
