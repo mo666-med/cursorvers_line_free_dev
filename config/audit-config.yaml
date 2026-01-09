@@ -113,9 +113,9 @@ expected_responses:
   # LINE Bot Edge Function
   line_bot_no_auth:
     status: 401
-    message: "Missing authorization header"
+    message: "Missing signature"
     is_normal: true
-    description: "認証ヘッダーなしでのアクセスは401が正常"
+    description: "署名または内部シークレットなしのアクセスは401が正常"
 
   # Supabase MCP
   supabase_mcp_no_token:
