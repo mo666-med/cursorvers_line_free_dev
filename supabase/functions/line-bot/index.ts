@@ -72,18 +72,29 @@ Deno.serve(async (req) => {
 
   const signature = req.headers.get("x-line-signature");
   const mockSignature = req.headers.get("x-mock-signature");
+  const internalSecretHeader = req.headers.get("x-line-internal-secret");
   const authHeader = req.headers.get("authorization");
   const body = await req.text();
 
   log.info("POST request", {
     hasSignature: !!signature,
     hasMockSignature: !!mockSignature,
+    hasInternalSecretHeader: !!internalSecretHeader,
     hasAuthHeader: !!authHeader,
     bodyLength: body.length,
     bodyPreview: body.substring(0, 100),
   });
 
-  if (!mockSignature && !authHeader) {
+  const internalSecret = Deno.env.get("LINE_BOT_INTERNAL_SECRET") ?? "";
+  const bearerToken = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : null;
+  const isInternalRequest = internalSecret.length > 0 &&
+    (bearerToken === internalSecret ||
+      internalSecretHeader === internalSecret ||
+      mockSignature === internalSecret);
+
+  if (!isInternalRequest) {
     if (!CHANNEL_SECRET) {
       log.error("LINE_CHANNEL_SECRET is not set");
       return new Response("Server configuration error", { status: 500 });
@@ -103,7 +114,7 @@ Deno.serve(async (req) => {
     }
   } else {
     log.info(
-      "Internal request detected; skipping signature verification for Manus / mock",
+      "Internal request authenticated; skipping LINE signature verification",
     );
   }
 
