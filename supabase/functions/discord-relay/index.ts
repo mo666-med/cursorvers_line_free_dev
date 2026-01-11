@@ -122,10 +122,13 @@ Deno.serve(async (req) => {
     }
 
     if (!DISCORD_SYSTEM_WEBHOOK) {
-      return new Response(JSON.stringify({ error: "DISCORD_SYSTEM_WEBHOOK not configured" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "DISCORD_SYSTEM_WEBHOOK not configured" }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const body = await req.json();
