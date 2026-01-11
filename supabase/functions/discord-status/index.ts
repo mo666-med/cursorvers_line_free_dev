@@ -67,11 +67,15 @@ Deno.serve(async (req) => {
         headers: { "Content-Type": "application/json" },
       });
     }
-    const webhooks = data.map((w: { id: string; name: string; channel_id: string; token?: string }) => ({
+    const webhooks = data.map((
+      w: { id: string; name: string; channel_id: string; token?: string },
+    ) => ({
       id: w.id,
       name: w.name,
       channel_id: w.channel_id,
-      url: w.token ? `https://discord.com/api/webhooks/${w.id}/${w.token}` : null,
+      url: w.token
+        ? `https://discord.com/api/webhooks/${w.id}/${w.token}`
+        : null,
     }));
     return new Response(
       JSON.stringify({
@@ -93,10 +97,13 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { channel_id, name } = body;
     if (!channel_id || !name) {
-      return new Response(JSON.stringify({ error: "channel_id and name required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "channel_id and name required" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
     const res = await fetch(
       `https://discord.com/api/v10/channels/${channel_id}/webhooks`,
@@ -174,10 +181,15 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { channel_id, content, embeds } = body;
     if (!channel_id || (!content && !embeds)) {
-      return new Response(JSON.stringify({ error: "channel_id and (content or embeds) required" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({
+          error: "channel_id and (content or embeds) required",
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
     const res = await fetch(
       `https://discord.com/api/v10/channels/${channel_id}/messages`,
@@ -238,7 +250,9 @@ Deno.serve(async (req) => {
     // Bot のロールをマッピング
     const botRoles = memberData.roles?.map((roleId: string) => {
       const role = rolesData.find((r: { id: string }) => r.id === roleId);
-      return role ? { id: role.id, name: role.name, permissions: role.permissions } : { id: roleId };
+      return role
+        ? { id: role.id, name: role.name, permissions: role.permissions }
+        : { id: roleId };
     }) || [];
 
     return new Response(
