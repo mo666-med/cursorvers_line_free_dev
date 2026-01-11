@@ -8,8 +8,9 @@
  */
 
 const DISCORD_BOT_TOKEN = Deno.env.get("DISCORD_BOT_TOKEN") ?? "";
+const DISCORD_SYSTEM_WEBHOOK = Deno.env.get("DISCORD_SYSTEM_WEBHOOK") ?? "";
 
-// チャンネルID
+// チャンネルID (Bot API用)
 const CHANNELS = {
   OWNER_TWEETS: "1444566050711801957", // ☎-ownerのつぶやき
   CYBERSECURITY: "1443611660894998748", // 📘-サイバーセキュリティレポート
@@ -111,13 +112,57 @@ Deno.serve(async (req) => {
     return await sendToChannel(CHANNELS.CYBERSECURITY, message, embeds);
   }
 
+  // POST /line-event: LINE イベント → #system-monitor (Webhook経由)
+  if (url.pathname.endsWith("/line-event")) {
+    if (req.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Method not allowed" }), {
+        status: 405,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (!DISCORD_SYSTEM_WEBHOOK) {
+      return new Response(JSON.stringify({ error: "DISCORD_SYSTEM_WEBHOOK not configured" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const body = await req.json();
+    const { content, embeds } = body;
+
+    // Webhook経由で送信
+    const res = await fetch(DISCORD_SYSTEM_WEBHOOK, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: "LINE Bot",
+        content,
+        embeds,
+      }),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.text();
+      return new Response(JSON.stringify({ error: errorData }), {
+        status: res.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(
+      JSON.stringify({ success: true, via: "webhook" }),
+      { headers: { "Content-Type": "application/json" } },
+    );
+  }
+
   // ヘルスチェック
   if (url.pathname.endsWith("/health")) {
     return new Response(
       JSON.stringify({
         status: "ok",
         channels: CHANNELS,
-        endpoints: ["/x-posts", "/cybersecurity"],
+        endpoints: ["/x-posts", "/cybersecurity", "/line-event"],
       }),
       { headers: { "Content-Type": "application/json" } },
     );

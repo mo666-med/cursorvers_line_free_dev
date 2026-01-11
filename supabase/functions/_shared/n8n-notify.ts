@@ -1,6 +1,6 @@
 /**
  * Discord イベント通知モジュール
- * Edge Functionから直接Discordに通知を送信
+ * discord-relay 経由でチャンネル別にルーティング
  */
 
 import { createLogger } from "./logger.ts";
@@ -8,9 +8,9 @@ import { extractErrorMessage } from "./error-utils.ts";
 
 const log = createLogger("discord-event-notify");
 
-// Discord Webhook URL（M-ISAC用と共通）
-const DISCORD_WEBHOOK_URL = Deno.env.get("DISCORD_ALERT_WEBHOOK") ??
-  "https://discord.com/api/webhooks/1457311304162476115/XXvNOy7xuLNAdWcGJ4LHTggVFyy7vdg24f9eMK6pEV8XI-A5dYZBFFK791ib_9OmtqY0";
+// discord-relay エンドポイント（チャンネル別ルーティング）
+const DISCORD_RELAY_BASE =
+  "https://haaxgwyimoqzzxzdaeep.supabase.co/functions/v1/discord-relay";
 
 // タイムアウト設定
 const NOTIFICATION_TIMEOUT_MS = 5000;
@@ -21,17 +21,11 @@ interface NotifyResult {
 }
 
 /**
- * Discordに埋め込みメッセージを送信
+ * discord-relay 経由で埋め込みメッセージを送信
  */
-async function sendDiscordEmbed(
-  username: string,
-  embed: {
-    title: string;
-    color: number;
-    fields: Array<{ name: string; value: string; inline?: boolean }>;
-    thumbnail?: { url: string };
-    timestamp?: string;
-  },
+async function sendToRelay(
+  endpoint: string,
+  embeds: unknown[],
 ): Promise<NotifyResult> {
   try {
     const controller = new AbortController();
@@ -40,37 +34,32 @@ async function sendDiscordEmbed(
       NOTIFICATION_TIMEOUT_MS,
     );
 
-    const response = await fetch(DISCORD_WEBHOOK_URL, {
+    const response = await fetch(`${DISCORD_RELAY_BASE}${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username,
-        embeds: [{
-          ...embed,
-          timestamp: embed.timestamp ?? new Date().toISOString(),
-        }],
-      }),
+      body: JSON.stringify({ embeds }),
       signal: controller.signal,
     });
 
     clearTimeout(timeout);
 
     if (!response.ok) {
-      log.warn("Discord notification failed", { status: response.status });
+      const errorData = await response.text();
+      log.warn("Discord relay failed", { status: response.status, errorData });
       return { success: false, error: `HTTP ${response.status}` };
     }
 
-    log.info("Discord notification sent", { username, title: embed.title });
+    log.info("Discord notification sent via relay", { endpoint });
     return { success: true };
   } catch (err) {
     const errorMessage = extractErrorMessage(err);
-    log.warn("Discord notification error", { errorMessage });
+    log.warn("Discord relay error", { errorMessage });
     return { success: false, error: errorMessage };
   }
 }
 
 /**
- * Stripe決済イベントをDiscordに通知
+ * Stripe決済イベントをDiscordに通知 → #system-monitor
  */
 export function notifyStripeEvent(
   _eventType: string,
@@ -85,7 +74,7 @@ export function notifyStripeEvent(
     ? (amount / 100).toLocaleString("ja-JP")
     : "N/A";
 
-  return sendDiscordEmbed("Stripe Bot", {
+  const embed = {
     title: "💰 新規決済完了",
     color: 0x58D68D, // 緑
     fields: [
@@ -98,11 +87,14 @@ export function notifyStripeEvent(
       },
       { name: "📋 タイプ", value: mode, inline: true },
     ],
-  });
+    timestamp: new Date().toISOString(),
+  };
+
+  return sendToRelay("/line-event", [embed]);
 }
 
 /**
- * LINE登録イベントをDiscordに通知
+ * LINE登録イベントをDiscordに通知 → #system-monitor
  */
 export function notifyLineEvent(
   eventType: string,
@@ -115,6 +107,7 @@ export function notifyLineEvent(
     color: number;
     fields: Array<{ name: string; value: string; inline?: boolean }>;
     thumbnail?: { url: string };
+    timestamp: string;
   } = {
     title: "👋 LINE 新規登録",
     color: 0x00FF00, // 緑
@@ -127,11 +120,12 @@ export function notifyLineEvent(
       },
       { name: "🎯 イベント", value: eventType, inline: true },
     ],
+    timestamp: new Date().toISOString(),
   };
 
   if (pictureUrl) {
     embed.thumbnail = { url: pictureUrl };
   }
 
-  return sendDiscordEmbed("LINE Bot", embed);
+  return sendToRelay("/line-event", [embed]);
 }
