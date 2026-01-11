@@ -42,6 +42,8 @@ cursorvers_line_free_dev/
 │   ├── line-register/            # 友だち登録
 │   ├── stripe-webhook/           # Stripe決済
 │   ├── discord-bot/              # Discord Bot
+│   ├── discord-status/           # Discordステータス・管理
+│   ├── discord-relay/            # n8n→Discord ルーティング
 │   ├── manus-audit-line-daily-brief/  # 監査
 │   └── deno.json                 # Import Map設定
 ├── scripts/                   # 運用スクリプト
