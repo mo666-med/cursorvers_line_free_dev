@@ -163,11 +163,10 @@ export async function checkLineRegistrationSystem(
     }
   }
 
-  // インタラクション チェック（警告のみ）
-  if (!recentInteractions.passed) {
-    if (recentInteractions.error) {
-      warnings.push(`⚠️ LINE応答: ${recentInteractions.error}`);
-    }
+  // インタラクション チェック（情報提供のみ、警告カウントに含めない）
+  // ユーザーアクティビティがなくても、システムの健全性には影響しない
+  if (!recentInteractions.passed && recentInteractions.error) {
+    log.info("No recent interactions", { error: recentInteractions.error });
   }
 
   log.info("LINE registration system check completed", {

@@ -8,3 +8,4 @@
 {"event":"subagent_start","timestamp":"2026-01-14T15:27:25Z","agent_id":"unknown"}
 {"event":"subagent_stop","timestamp":"2026-01-14T15:28:30Z","agent_id":"unknown","transcript_path":"","transcript_preview":""}
 {"event":"subagent_stop","timestamp":"2026-01-14T15:28:53Z","agent_id":"unknown","transcript_path":"","transcript_preview":""}
+{"event":"subagent_stop","timestamp":"2026-01-14T15:57:00Z","agent_id":"unknown","transcript_path":"","transcript_preview":""}
