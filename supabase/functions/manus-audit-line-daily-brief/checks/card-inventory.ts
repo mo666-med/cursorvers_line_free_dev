@@ -27,10 +27,8 @@ export async function checkCardInventory(
 ): Promise<CardInventoryCheckResult> {
   log.info("Checking card inventory");
 
-  const { data, error } = await client
-    .from("line_cards")
-    .select("theme, status")
-    .in("status", ["ready", "used", "archived"]);
+  // RPC関数を使用してサーバーサイドで集計（1000件制限を回避）
+  const { data, error } = await client.rpc("get_card_inventory_stats");
 
   if (error) {
     log.error("Failed to fetch card inventory", { error: error.message });
@@ -41,7 +39,7 @@ export async function checkCardInventory(
     };
   }
 
-  // Aggregate by theme
+  // RPC結果をinventory形式に変換
   const inventory: Record<
     CardTheme,
     { ready: number; used: number; archived: number; total: number }
@@ -55,13 +53,13 @@ export async function checkCardInventory(
     general: { ready: 0, used: 0, archived: 0, total: 0 },
   };
 
-  for (const card of data || []) {
-    const theme = card.theme as CardTheme;
+  for (const row of data || []) {
+    const theme = row.theme as CardTheme;
     if (inventory[theme]) {
-      inventory[theme].total++;
-      if (card.status === "ready") inventory[theme].ready++;
-      else if (card.status === "used") inventory[theme].used++;
-      else if (card.status === "archived") inventory[theme].archived++;
+      inventory[theme].ready = Number(row.ready_count) || 0;
+      inventory[theme].used = Number(row.used_count) || 0;
+      inventory[theme].archived = Number(row.archived_count) || 0;
+      inventory[theme].total = Number(row.total_count) || 0;
     }
   }
 
