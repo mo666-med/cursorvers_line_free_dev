@@ -378,7 +378,11 @@ async function checkLandingPageAccess(
       };
     }
   } catch (error) {
-    return handleFetchError(error, LANDING_PAGE_TIMEOUT_MS, "ランディングページ接続失敗");
+    return handleFetchError(
+      error,
+      LANDING_PAGE_TIMEOUT_MS,
+      "ランディングページ接続失敗",
+    );
   }
 }
 
