@@ -14,16 +14,25 @@ import {
 
 const log = createLogger("audit-line-registration");
 
-// タイムアウト設定
+// ===================
+// 設定定数
+// ===================
+
+// タイムアウト設定（LINE APIの推奨値: 5秒以内）
 const API_TIMEOUT_MS = 5000;
+// 静的コンテンツ用タイムアウト（3秒で十分）
 const LANDING_PAGE_TIMEOUT_MS = 3000;
-const LIFF_ID = "2008640048-jnoneGgO";
+
+// LIFF ID（環境変数から取得、フォールバック値あり）
+const LIFF_ID = Deno.env.get("LIFF_ID") ?? "2008640048-jnoneGgO";
 
 // LINE API設定
 const LINE_API_BASE = "https://api.line.me";
+
+// インタラクション鮮度（ビジネス要件: 2日以内を「最近」と定義）
 const INTERACTION_FRESHNESS_HOURS = 48;
 
-// テーブル不存在エラーコード
+// PostgreSQLテーブル不存在エラーコード
 const TABLE_NOT_FOUND_CODES = ["PGRST116", "42P01"];
 
 // Google Sheets設定
@@ -38,12 +47,31 @@ interface CheckConfig {
 }
 
 /**
- * エラーメッセージをフォーマット
+ * エラーメッセージをフォーマット（詳細情報付き）
  */
 function formatError(action: string, error: unknown): string {
-  return `${action} - ${
-    error instanceof Error ? error.message : String(error)
-  }`;
+  if (error instanceof Error) {
+    return `${action} - ${error.message}`;
+  }
+  if (typeof error === "string") {
+    return `${action} - ${error}`;
+  }
+  return `${action} - ${JSON.stringify(error)}`;
+}
+
+/**
+ * fetch エラーを共通処理するハンドラー
+ * タイムアウトとその他のエラーを区別して処理
+ */
+function handleFetchError(
+  error: unknown,
+  timeoutMs: number,
+  action: string,
+): { passed: false; error: string } {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return { passed: false, error: `タイムアウト (${timeoutMs}ms)` };
+  }
+  return { passed: false, error: formatError(action, error) };
 }
 
 /**
@@ -76,7 +104,18 @@ export async function checkLineRegistrationSystem(
 ): Promise<LineRegistrationCheckResult> {
   log.info("Checking LINE registration system");
 
-  // 全チェックを並列実行
+  // 全チェックを並列実行（Promise.allSettledで1つの失敗が他に影響しない）
+  const results = await Promise.allSettled([
+    checkWebhookHealth(config.supabaseUrl),
+    checkApiHealth(config.supabaseUrl),
+    checkGoogleSheetsSync(config.googleSaJson, config.membersSheetId),
+    checkLandingPageAccess(config.landingPageUrl),
+    checkLineBotHealth(),
+    checkRecentInteractions(client),
+  ]);
+
+  // 結果を展開（rejectedの場合はデフォルト値を使用）
+  const defaultResult = { passed: false, error: "チェック実行失敗" };
   const [
     webhookHealth,
     apiHealth,
@@ -84,14 +123,16 @@ export async function checkLineRegistrationSystem(
     landingPageAccess,
     lineBotHealth,
     recentInteractions,
-  ] = await Promise.all([
-    checkWebhookHealth(config.supabaseUrl),
-    checkApiHealth(config.supabaseUrl),
-    checkGoogleSheetsSync(config.googleSaJson, config.membersSheetId),
-    checkLandingPageAccess(config.landingPageUrl),
-    checkLineBotHealth(), // 環境変数から直接取得
-    checkRecentInteractions(client),
-  ]);
+  ] = results.map((r) =>
+    r.status === "fulfilled" ? r.value : defaultResult
+  ) as [
+    ResponseTimeHealthResult,
+    ResponseTimeHealthResult,
+    SheetsSyncResult,
+    ResponseTimeHealthResult,
+    LineBotHealthResult,
+    RecentInteractionsResult,
+  ];
 
   // 警告を集約
   const warnings: string[] = [];
@@ -220,10 +261,7 @@ async function checkWebhookHealth(
       };
     }
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      return { passed: false, error: `タイムアウト (${API_TIMEOUT_MS}ms)` };
-    }
-    return { passed: false, error: formatError("接続失敗", error) };
+    return handleFetchError(error, API_TIMEOUT_MS, "LINE Webhook接続失敗");
   }
 }
 
@@ -266,10 +304,7 @@ async function checkApiHealth(
       };
     }
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      return { passed: false, error: `タイムアウト (${API_TIMEOUT_MS}ms)` };
-    }
-    return { passed: false, error: formatError("接続失敗", error) };
+    return handleFetchError(error, API_TIMEOUT_MS, "LINE登録API接続失敗");
   }
 }
 
@@ -343,13 +378,7 @@ async function checkLandingPageAccess(
       };
     }
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      return {
-        passed: false,
-        error: `タイムアウト (${LANDING_PAGE_TIMEOUT_MS}ms)`,
-      };
-    }
-    return { passed: false, error: formatError("アクセス失敗", error) };
+    return handleFetchError(error, LANDING_PAGE_TIMEOUT_MS, "ランディングページ接続失敗");
   }
 }
 
@@ -392,10 +421,7 @@ async function checkLineBotHealth(): Promise<LineBotHealthResult> {
       };
     }
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      return { passed: false, error: `タイムアウト (${API_TIMEOUT_MS}ms)` };
-    }
-    return { passed: false, error: formatError("API接続失敗", error) };
+    return handleFetchError(error, API_TIMEOUT_MS, "LINE Bot API接続失敗");
   }
 }
 
