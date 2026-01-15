@@ -183,7 +183,10 @@ Deno.serve(async (req) => {
         }),
         {
           status: 429,
-          headers: { ...currentCorsHeaders, "Content-Type": "application/json" },
+          headers: {
+            ...currentCorsHeaders,
+            "Content-Type": "application/json",
+          },
         },
       );
     }

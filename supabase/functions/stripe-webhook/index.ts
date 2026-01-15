@@ -519,7 +519,8 @@ Deno.serve(async (req) => {
               "true";
 
           // metadata から line_user_id を取得（Checkout時に紐付け済みの場合）
-          const metadataLineUserId = session.metadata?.line_user_id?.trim() || null;
+          const metadataLineUserId = session.metadata?.line_user_id?.trim() ||
+            null;
 
           // 顧客名を取得
           const customerName = session.customer_details?.name || null;
@@ -602,7 +603,8 @@ Deno.serve(async (req) => {
 
           // 既存メンバーの場合は discord_invite_sent をリセットしない
           // line_user_id: 既存があればそれを維持、なければmetadataから取得
-          const resolvedLineUserId = existingMember?.line_user_id || metadataLineUserId;
+          const resolvedLineUserId = existingMember?.line_user_id ||
+            metadataLineUserId;
 
           const basePayload: Record<string, unknown> = {
             email: customerEmail,
