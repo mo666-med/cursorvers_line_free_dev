@@ -119,8 +119,8 @@ jobs:
             ERROR_COUNT=$(echo "$BODY" | jq -r '.summary.errorCount // 0')
 
             # Extract themes with low inventory for auto-replenish
-            LOW_THEMES=$(echo "$BODY" | jq -r '.checks.cardInventory.warnings[]? // empty' | \
-              sed -n 's/.*警告: \([a-z_]*\)テーマ.*/\1/p' | tr '\n' ',' | sed 's/,$//')
+            # 修正: cardInventory.details から ready_cards == 0 のテーマを抽出
+            LOW_THEMES=$(echo "$BODY" | jq -r '.checks.cardInventory.details[]? | select(.ready_cards == 0) | .theme' | tr '\n' ',' | sed 's/,$//')
 
             if [ -n "$LOW_THEMES" ]; then
               echo "LOW_INVENTORY_THEMES=${LOW_THEMES}" >> $GITHUB_ENV
