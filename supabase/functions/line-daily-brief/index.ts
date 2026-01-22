@@ -266,7 +266,9 @@ async function selectCard(client: SupabaseClient): Promise<LineCard | null> {
 
   // Guard: No cards available
   if (!cards || cards.length === 0) {
-    log.warn("No available cards after cooldown filter, trying without cooldown");
+    log.warn(
+      "No available cards after cooldown filter, trying without cooldown",
+    );
     // Fallback: fetch without cooldown filter
     const { data: fallbackCards, error: fallbackError } = await client
       .from("line_cards")
@@ -296,7 +298,7 @@ async function selectCard(client: SupabaseClient): Promise<LineCard | null> {
   let selectedCard: LineCard;
   if (lastSourceType) {
     const preferredCards = cards.filter(
-      (c) => getSourceType(c.source_path) !== lastSourceType
+      (c) => getSourceType(c.source_path) !== lastSourceType,
     );
 
     if (preferredCards.length > 0) {
