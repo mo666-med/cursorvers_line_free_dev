@@ -2,11 +2,14 @@
  * LINE Daily Brief Edge Function
  *
  * Selects one card from line_cards and broadcasts via LINE Messaging API.
- * Updated: 2025-12-04
- * Priority:
- * 1. status = 'ready'
- * 2. Themes with the lowest total delivery count
- * 3. Cards with the lowest times_used in the selected theme
+ * Updated: 2026-01-22
+ *
+ * Selection Priority:
+ * 1. status = 'ready' or 'used'
+ * 2. Themes with the lowest total delivery count (avoid last theme)
+ * 3. Cooldown: exclude cards used within last 7 days
+ * 4. Source diversity: prefer different source type (belief vs note) from last delivery
+ * 5. Random selection from eligible candidates
  *
  * POST /line-daily-brief
  * Headers:
@@ -147,18 +150,78 @@ async function getLastDeliveredTheme(
 }
 
 /**
- * Select one card with balanced theme distribution
- * RULE: Never select the same theme as the previous delivery
+ * Source type for card diversity
+ */
+type SourceType = "belief" | "note" | "other";
+
+/**
+ * Determine source type from source_path
+ */
+function getSourceType(sourcePath: string | null | undefined): SourceType {
+  if (!sourcePath) return "other";
+  if (sourcePath.startsWith("05_Beliefs/")) return "belief";
+  if (sourcePath.startsWith("note.com/")) return "note";
+  return "other";
+}
+
+/**
+ * Get the source type of the last delivered card
+ */
+async function getLastDeliveredSourceType(
+  client: SupabaseClient,
+): Promise<SourceType | null> {
+  const { data, error } = await client
+    .from("line_cards")
+    .select("source_path")
+    .not("last_used_at", "is", null)
+    .order("last_used_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return getSourceType(data.source_path);
+}
+
+/**
+ * Calculate cooldown date (N days ago)
+ */
+function getCooldownDate(days: number): Date {
+  const now = new Date();
+  return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * Select one card with balanced theme and source distribution
+ * RULES:
+ * 1. Never select the same theme as the previous delivery
+ * 2. Prefer different source type (belief vs note) from previous delivery
+ * 3. Apply cooldown period to avoid recently used cards
  */
 async function selectCard(client: SupabaseClient): Promise<LineCard | null> {
-  const lastTheme = await getLastDeliveredTheme(client);
-  log.info("Fetched last delivered theme", { lastTheme: lastTheme ?? "none" });
+  // Configuration
+  const COOLDOWN_DAYS = 7;
+  const CARD_LIMIT = 20;
 
+  // Fetch last delivery info for diversity
+  const [lastTheme, lastSourceType] = await Promise.all([
+    getLastDeliveredTheme(client),
+    getLastDeliveredSourceType(client),
+  ]);
+  log.info("Fetched last delivery info", {
+    lastTheme: lastTheme ?? "none",
+    lastSourceType: lastSourceType ?? "none",
+  });
+
+  // Get theme statistics
   const themeStats = await getThemeStats(client);
   let availableThemes = themeStats.filter((t) =>
     t.ready_count > 0 || t.total_times_used > 0
   );
 
+  // Exclude last theme to avoid repetition
   if (lastTheme && availableThemes.length > 1) {
     availableThemes = availableThemes.filter((t) => t.theme !== lastTheme);
     log.info("Excluded last theme to avoid repetition", { lastTheme });
@@ -169,6 +232,7 @@ async function selectCard(client: SupabaseClient): Promise<LineCard | null> {
     return null;
   }
 
+  // Sort by usage (lowest first)
   availableThemes.sort((a, b) => a.total_times_used - b.total_times_used);
   const firstTheme = availableThemes[0];
   if (!firstTheme) {
@@ -181,29 +245,93 @@ async function selectCard(client: SupabaseClient): Promise<LineCard | null> {
     totalTimesUsed: firstTheme.total_times_used,
   });
 
+  // Calculate cooldown threshold
+  const cooldownDate = getCooldownDate(COOLDOWN_DAYS);
+  const cooldownIso = cooldownDate.toISOString();
+
+  // Fetch cards with cooldown filter
+  // Cards are eligible if: last_used_at is null OR last_used_at < cooldownDate
   const { data: cards, error } = await client
     .from("line_cards")
     .select("id,body,theme,source_path,times_used,status")
     .eq("theme", selectedTheme)
     .in("status", ["ready", "used"])
+    .or(`last_used_at.is.null,last_used_at.lt.${cooldownIso}`)
     .order("times_used", { ascending: true })
-    .limit(5);
+    .limit(CARD_LIMIT);
 
   if (error) {
     throw new Error(`Failed to fetch cards: ${error.message}`);
   }
 
+  // Guard: No cards available
   if (!cards || cards.length === 0) {
-    log.warn("No available cards for selected theme", { selectedTheme });
-    return null;
+    log.warn("No available cards after cooldown filter, trying without cooldown");
+    // Fallback: fetch without cooldown filter
+    const { data: fallbackCards, error: fallbackError } = await client
+      .from("line_cards")
+      .select("id,body,theme,source_path,times_used,status")
+      .eq("theme", selectedTheme)
+      .in("status", ["ready", "used"])
+      .order("times_used", { ascending: true })
+      .limit(CARD_LIMIT);
+
+    if (fallbackError || !fallbackCards || fallbackCards.length === 0) {
+      log.warn("No available cards for selected theme", { selectedTheme });
+      return null;
+    }
+
+    // Use fallback cards
+    const randomIndex = Math.floor(Math.random() * fallbackCards.length);
+    const selectedCard = fallbackCards[randomIndex] as LineCard;
+    log.info("Selected card (fallback, no cooldown)", {
+      cardId: selectedCard.id,
+      timesUsed: selectedCard.times_used,
+      sourceType: getSourceType(selectedCard.source_path),
+    });
+    return selectedCard;
   }
 
-  const randomIndex = Math.floor(Math.random() * Math.min(cards.length, 5));
-  const selectedCard = cards[randomIndex] as LineCard;
+  // Prefer different source type for diversity
+  let selectedCard: LineCard;
+  if (lastSourceType) {
+    const preferredCards = cards.filter(
+      (c) => getSourceType(c.source_path) !== lastSourceType
+    );
 
-  log.info("Selected card", {
+    if (preferredCards.length > 0) {
+      // Select randomly from preferred cards
+      const randomIndex = Math.floor(Math.random() * preferredCards.length);
+      selectedCard = preferredCards[randomIndex] as LineCard;
+      log.info("Selected card with different source type", {
+        cardId: selectedCard.id,
+        sourceType: getSourceType(selectedCard.source_path),
+        lastSourceType,
+      });
+    } else {
+      // Fallback: no preferred cards, select from all
+      const randomIndex = Math.floor(Math.random() * cards.length);
+      selectedCard = cards[randomIndex] as LineCard;
+      log.info("Selected card (same source type, no alternatives)", {
+        cardId: selectedCard.id,
+        sourceType: getSourceType(selectedCard.source_path),
+      });
+    }
+  } else {
+    // No last source type, select randomly
+    const randomIndex = Math.floor(Math.random() * cards.length);
+    selectedCard = cards[randomIndex] as LineCard;
+    log.info("Selected card (no last source type)", {
+      cardId: selectedCard.id,
+      sourceType: getSourceType(selectedCard.source_path),
+    });
+  }
+
+  log.info("Final selected card", {
     cardId: selectedCard.id,
     timesUsed: selectedCard.times_used,
+    theme: selectedCard.theme,
+    sourceType: getSourceType(selectedCard.source_path),
   });
 
   return selectedCard;
