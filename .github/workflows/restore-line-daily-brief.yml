@@ -1,0 +1,31 @@
+name: Restore LINE Daily Brief
+
+on:
+  schedule:
+    # 2026年2月1日 JST 00:00 (UTC 15:00 on Jan 31)
+    - cron: '0 15 31 1 *'
+  workflow_dispatch:
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check date and enable workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CURRENT_MONTH=$(date -u +%m)
+          CURRENT_DAY=$(date -u +%d)
+          
+          # Feb 1 (or manual trigger)
+          if [ "$CURRENT_MONTH" = "02" ] || [ "$CURRENT_MONTH" = "01" -a "$CURRENT_DAY" = "31" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "📤 LINE Daily Brief を有効化中..."
+            gh workflow enable "LINE Daily Brief" --repo ${{ github.repository }}
+            echo "✅ LINE Daily Brief が有効化されました"
+            
+            # 自分自身を無効化
+            gh workflow disable "Restore LINE Daily Brief" --repo ${{ github.repository }}
+            echo "🗑️ 復帰ワークフローを無効化しました"
+          else
+            echo "⏳ まだリセット日ではありません"
+          fi
