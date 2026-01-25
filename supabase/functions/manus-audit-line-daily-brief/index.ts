@@ -302,7 +302,8 @@ Deno.serve(async (req) => {
       }
     } else {
       log.info("Skipping notification - no remediation triggered", {
-        hasIssues: result.summary.errorCount > 0 || result.summary.warningCount > 0,
+        hasIssues: result.summary.errorCount > 0 ||
+          result.summary.warningCount > 0,
         errorCount: result.summary.errorCount,
         warningCount: result.summary.warningCount,
       });
@@ -342,4 +343,3 @@ export { checkCardInventory } from "./card-inventory.ts";
 export { checkBroadcastSuccess } from "./broadcast-success.ts";
 export { checkDatabaseHealth } from "./database-health.ts";
 export { checkLineRegistrationSystem } from "./line-registration.ts";
-
