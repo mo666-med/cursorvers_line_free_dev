@@ -270,24 +270,41 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Send notifications
-    if (isReportMode) {
-      await Promise.all([
-        sendManusNotification(result, {
+    // Send notifications ONLY when remediation was triggered
+    // 修繕が実行された場合のみ通知（異常検出のみでは通知しない）
+    const shouldNotify = result.remediation?.triggered === true;
+
+    if (shouldNotify) {
+      log.info("Sending notification - remediation was triggered", {
+        errorCount: result.summary.errorCount,
+        warningCount: result.summary.warningCount,
+        remediationTriggered: result.remediation?.triggered,
+      });
+
+      if (isReportMode) {
+        await Promise.all([
+          sendManusNotification(result, {
+            force: true,
+            webhookUrl: MANUS_WEBHOOK_URL,
+          }),
+          sendDiscordNotification(result, {
+            force: true,
+            webhookUrl: DISCORD_MAINT_WEBHOOK_URL,
+            audience: "maintenance",
+          }),
+        ]);
+      } else {
+        await sendDiscordNotification(result, {
           force: true,
-          webhookUrl: MANUS_WEBHOOK_URL,
-        }),
-        sendDiscordNotification(result, {
-          force: true,
-          webhookUrl: DISCORD_MAINT_WEBHOOK_URL,
-          audience: "maintenance",
-        }),
-      ]);
+          webhookUrl: DISCORD_ADMIN_WEBHOOK_URL,
+          audience: "admin",
+        });
+      }
     } else {
-      await sendDiscordNotification(result, {
-        force: true,
-        webhookUrl: DISCORD_ADMIN_WEBHOOK_URL,
-        audience: "admin",
+      log.info("Skipping notification - no remediation triggered", {
+        hasIssues: result.summary.errorCount > 0 || result.summary.warningCount > 0,
+        errorCount: result.summary.errorCount,
+        warningCount: result.summary.warningCount,
       });
     }
 
@@ -317,3 +334,12 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+/**
+ * チェックモジュールのエクスポート
+ */
+export { checkCardInventory } from "./card-inventory.ts";
+export { checkBroadcastSuccess } from "./broadcast-success.ts";
+export { checkDatabaseHealth } from "./database-health.ts";
+export { checkLineRegistrationSystem } from "./line-registration.ts";
+
