@@ -26,11 +26,11 @@ const LEASE_TTL_SECONDS = 1800;
 
 // Exponential backoff schedule (in seconds)
 const RETRY_DELAYS_SECONDS = [
-  60,       // 1 minute
-  300,      // 5 minutes
-  1800,     // 30 minutes
-  7200,     // 2 hours
-  43200,    // 12 hours
+  60, // 1 minute
+  300, // 5 minutes
+  1800, // 30 minutes
+  7200, // 2 hours
+  43200, // 12 hours
 ] as const;
 
 // Allowlist: only persist safe fields per template (never store secrets)
@@ -183,7 +183,9 @@ export async function fetchRetryableItems(
 }> {
   const { data, error } = await supabase
     .from("email_send_queue")
-    .select("id, event_id, recipient_email, template, params, attempts, max_attempts")
+    .select(
+      "id, event_id, recipient_email, template, params, attempts, max_attempts",
+    )
     .in("status", ["pending", "failed"])
     .lte("next_retry_at", new Date().toISOString())
     .order("next_retry_at", { ascending: true })
@@ -205,7 +207,8 @@ export async function markProcessing(
   queueId: string,
 ): Promise<ClaimResult> {
   const token = crypto.randomUUID();
-  const leaseExpiresAt = new Date(Date.now() + LEASE_TTL_SECONDS * 1000).toISOString();
+  const leaseExpiresAt = new Date(Date.now() + LEASE_TTL_SECONDS * 1000)
+    .toISOString();
 
   // Atomic claim: update only if still pending/failed, check row count
   const { data, error } = await supabase

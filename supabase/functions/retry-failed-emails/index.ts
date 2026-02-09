@@ -18,16 +18,16 @@ import { extractErrorMessage } from "../_shared/error-utils.ts";
 import { maskEmail } from "../_shared/masking-utils.ts";
 import { notifyDiscord } from "../_shared/alert.ts";
 import {
+  sendDirectDiscordInviteEmail,
   sendPaidMemberWelcomeEmail,
   sendReminderEmail,
-  sendDirectDiscordInviteEmail,
 } from "../_shared/email.ts";
 import {
-  reclaimStaleProcessing,
   fetchRetryableItems,
+  markFailed,
   markProcessing,
   markSent,
-  markFailed,
+  reclaimStaleProcessing,
 } from "../_shared/email-queue.ts";
 
 const log = createLogger("retry-failed-emails");
@@ -43,20 +43,25 @@ async function sendByTemplate(
 ): Promise<{ success: boolean; error?: string }> {
   switch (template) {
     case "paid_member_welcome": {
-      const code = params["verification_code_from_member"] as string | undefined;
+      const code = params["verification_code_from_member"] as
+        | string
+        | undefined;
       const tier = (params["tier_display_name"] as string) ?? "Library Member";
 
       if (!code) {
         return {
           success: false,
-          error: "verification_code not available — manual intervention required",
+          error:
+            "verification_code not available — manual intervention required",
         };
       }
       return await sendPaidMemberWelcomeEmail(email, code, tier);
     }
 
     case "reminder": {
-      const code = params["verification_code_from_member"] as string | undefined;
+      const code = params["verification_code_from_member"] as
+        | string
+        | undefined;
       const rawDays = params["days_since_purchase"];
       const parsedDays = Number(rawDays);
       const days = (Number.isFinite(parsedDays) && parsedDays >= 0)
@@ -118,7 +123,10 @@ Deno.serve(async (req) => {
     }
 
     // Step 2: Fetch items ready for retry
-    const { items, error: fetchError } = await fetchRetryableItems(supabase, 10);
+    const { items, error: fetchError } = await fetchRetryableItems(
+      supabase,
+      10,
+    );
 
     if (fetchError) {
       log.error("Failed to fetch retryable items", { error: fetchError });
@@ -130,7 +138,11 @@ Deno.serve(async (req) => {
 
     if (items.length === 0) {
       return new Response(
-        JSON.stringify({ processed: 0, reclaimed, message: "No items to retry" }),
+        JSON.stringify({
+          processed: 0,
+          reclaimed,
+          message: "No items to retry",
+        }),
         { headers: { "Content-Type": "application/json" } },
       );
     }
@@ -173,7 +185,14 @@ Deno.serve(async (req) => {
             email: maskEmail(item.recipient_email),
             error: memberError.message,
           });
-          await markFailed(supabase, item.id, item.attempts, item.max_attempts, `DB error: ${memberError.message}`, token);
+          await markFailed(
+            supabase,
+            item.id,
+            item.attempts,
+            item.max_attempts,
+            `DB error: ${memberError.message}`,
+            token,
+          );
           failed++;
           continue;
         }
@@ -189,10 +208,19 @@ Deno.serve(async (req) => {
               queueId: item.id,
               email: maskEmail(item.recipient_email),
             });
-            await markFailed(supabase, item.id, item.max_attempts - 1, item.max_attempts, "Verification code expired", token);
+            await markFailed(
+              supabase,
+              item.id,
+              item.max_attempts - 1,
+              item.max_attempts,
+              "Verification code expired",
+              token,
+            );
             await notifyDiscord({
               title: "MANUS ALERT: Email dead-lettered (code expired)",
-              message: `Email to ${maskEmail(item.recipient_email)} dead-lettered: verification code expired.\nTemplate: ${item.template}\nEvent: ${item.event_id}`,
+              message: `Email to ${
+                maskEmail(item.recipient_email)
+              } dead-lettered: verification code expired.\nTemplate: ${item.template}\nEvent: ${item.event_id}`,
               severity: "error",
             });
             deadLettered++;
@@ -243,7 +271,9 @@ Deno.serve(async (req) => {
           });
           await notifyDiscord({
             title: "MANUS ALERT: Email dead-lettered",
-            message: `Email to ${maskEmail(item.recipient_email)} failed after ${item.max_attempts} attempts.\nTemplate: ${item.template}\nEvent: ${item.event_id}`,
+            message: `Email to ${
+              maskEmail(item.recipient_email)
+            } failed after ${item.max_attempts} attempts.\nTemplate: ${item.template}\nEvent: ${item.event_id}`,
             severity: "error",
           });
         } else {
@@ -258,7 +288,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    const summary = { processed: items.length, reclaimed, succeeded, failed, deadLettered };
+    const summary = {
+      processed: items.length,
+      reclaimed,
+      succeeded,
+      failed,
+      deadLettered,
+    };
     log.info("Email retry queue processed", summary);
 
     return new Response(JSON.stringify(summary), {
@@ -266,7 +302,9 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     const errorMessage = extractErrorMessage(err);
-    log.error("Unhandled error in retry-failed-emails", { error: errorMessage });
+    log.error("Unhandled error in retry-failed-emails", {
+      error: errorMessage,
+    });
     return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

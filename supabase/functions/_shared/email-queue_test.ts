@@ -103,11 +103,23 @@ function createMockSupabase(responses: Record<string, MockQueryResult>) {
   const callLog: Array<{ method: string; args: unknown[] }> = [];
 
   function createChain(tableName: string): Record<string, unknown> {
-    const chain: Record<string, (...args: unknown[]) => Record<string, unknown>> = {};
+    const chain: Record<
+      string,
+      (...args: unknown[]) => Record<string, unknown>
+    > = {};
     const methods = [
-      "select", "insert", "update", "delete",
-      "eq", "in", "lte", "gte", "order", "limit",
-      "single", "maybeSingle",
+      "select",
+      "insert",
+      "update",
+      "delete",
+      "eq",
+      "in",
+      "lte",
+      "gte",
+      "order",
+      "limit",
+      "single",
+      "maybeSingle",
     ];
 
     for (const method of methods) {
@@ -120,9 +132,13 @@ function createMockSupabase(responses: Record<string, MockQueryResult>) {
         }
 
         // select() after update/insert returns response
-        if (method === "select" && callLog.some(c =>
-          c.method === `${tableName}.insert` || c.method === `${tableName}.update`
-        )) {
+        if (
+          method === "select" &&
+          callLog.some((c) =>
+            c.method === `${tableName}.insert` ||
+            c.method === `${tableName}.update`
+          )
+        ) {
           return chain;
         }
 
@@ -222,7 +238,9 @@ Deno.test("enqueueEmail - direct_discord_invite allowlist includes discord_invit
     data: { id: "queue-456" },
     error: null,
   };
-  const { client, callLog } = createMockSupabase({ email_send_queue: mockResult });
+  const { client, callLog } = createMockSupabase({
+    email_send_queue: mockResult,
+  });
 
   const result = await enqueueEmail(
     client as never,
@@ -240,7 +258,9 @@ Deno.test("enqueueEmail - direct_discord_invite allowlist includes discord_invit
 
   assertEquals(result.success, true);
   // Verify insert was called (allowlist should include discord_invite_url)
-  const insertCall = callLog.find(c => c.method === "email_send_queue.insert");
+  const insertCall = callLog.find((c) =>
+    c.method === "email_send_queue.insert"
+  );
   assertEquals(insertCall !== undefined, true);
 });
 
@@ -250,7 +270,15 @@ Deno.test("enqueueEmail - direct_discord_invite allowlist includes discord_invit
 
 Deno.test("fetchRetryableItems - returns items on success", async () => {
   const items = [
-    { id: "q1", event_id: "e1", recipient_email: "a@b.com", template: "paid_member_welcome", params: {}, attempts: 0, max_attempts: 5 },
+    {
+      id: "q1",
+      event_id: "e1",
+      recipient_email: "a@b.com",
+      template: "paid_member_welcome",
+      params: {},
+      attempts: 0,
+      max_attempts: 5,
+    },
   ];
   const mockResult: MockQueryResult = { data: items, error: null };
   const { client } = createMockSupabase({ email_send_queue: mockResult });
@@ -263,7 +291,10 @@ Deno.test("fetchRetryableItems - returns items on success", async () => {
 });
 
 Deno.test("fetchRetryableItems - returns empty on error", async () => {
-  const mockResult: MockQueryResult = { data: null, error: { message: "timeout" } };
+  const mockResult: MockQueryResult = {
+    data: null,
+    error: { message: "timeout" },
+  };
   const { client } = createMockSupabase({ email_send_queue: mockResult });
 
   const result = await fetchRetryableItems(client as never, 10);
@@ -298,7 +329,10 @@ Deno.test("markProcessing - returns claimed=false when already claimed", async (
 });
 
 Deno.test("markProcessing - returns claimed=false on error", async () => {
-  const mockResult: MockQueryResult = { data: null, error: { message: "error" } };
+  const mockResult: MockQueryResult = {
+    data: null,
+    error: { message: "error" },
+  };
   const { client } = createMockSupabase({ email_send_queue: mockResult });
 
   const result = await markProcessing(client as never, "q1");
@@ -308,11 +342,15 @@ Deno.test("markProcessing - returns claimed=false on error", async () => {
 
 Deno.test("markProcessing - sets processing_token and lease_expires_at", async () => {
   const mockResult: MockQueryResult = { data: [{ id: "q1" }], error: null };
-  const { client, callLog } = createMockSupabase({ email_send_queue: mockResult });
+  const { client, callLog } = createMockSupabase({
+    email_send_queue: mockResult,
+  });
 
   await markProcessing(client as never, "q1");
 
-  const updateCall = callLog.find(c => c.method === "email_send_queue.update");
+  const updateCall = callLog.find((c) =>
+    c.method === "email_send_queue.update"
+  );
   assertEquals(updateCall !== undefined, true);
   // Verify update args include processing fields
   if (updateCall) {
@@ -366,12 +404,14 @@ Deno.test("reclaimStaleProcessing - returns 0 when no stale items", async () => 
 
 Deno.test("markSent - succeeds with matching token", async () => {
   const mockResult: MockQueryResult = { data: [{ id: "q1" }], error: null };
-  const { client, callLog } = createMockSupabase({ email_send_queue: mockResult });
+  const { client, callLog } = createMockSupabase({
+    email_send_queue: mockResult,
+  });
 
   const result = await markSent(client as never, "q1", "test-token");
 
   assertEquals(result, true);
-  const eqCalls = callLog.filter(c => c.method === "email_send_queue.eq");
+  const eqCalls = callLog.filter((c) => c.method === "email_send_queue.eq");
   // Should have eq("id", ...) and eq("processing_token", ...)
   assertEquals(eqCalls.length >= 2, true);
 });
@@ -386,7 +426,10 @@ Deno.test("markSent - returns false when token mismatches (0 rows)", async () =>
 });
 
 Deno.test("markSent - returns false on DB error", async () => {
-  const mockResult: MockQueryResult = { data: null, error: { message: "error" } };
+  const mockResult: MockQueryResult = {
+    data: null,
+    error: { message: "error" },
+  };
   const { client } = createMockSupabase({ email_send_queue: mockResult });
 
   const result = await markSent(client as never, "q1", "test-token");
@@ -409,23 +452,38 @@ Deno.test("markSent - works without token (backward compat)", async () => {
 
 Deno.test("markFailed - sets dead_letter when exhausted", async () => {
   const mockResult: MockQueryResult = { data: [{ id: "q1" }], error: null };
-  const { client, callLog } = createMockSupabase({ email_send_queue: mockResult });
+  const { client, callLog } = createMockSupabase({
+    email_send_queue: mockResult,
+  });
 
   // attempts=4, maxAttempts=5 → attempts+1 >= maxAttempts → dead_letter
   await markFailed(client as never, "q1", 4, 5, "final error", "test-token");
 
-  const updateCall = callLog.find(c => c.method === "email_send_queue.update");
+  const updateCall = callLog.find((c) =>
+    c.method === "email_send_queue.update"
+  );
   assertEquals(updateCall !== undefined, true);
 });
 
 Deno.test("markFailed - sets failed when not exhausted", async () => {
   const mockResult: MockQueryResult = { data: [{ id: "q1" }], error: null };
-  const { client, callLog } = createMockSupabase({ email_send_queue: mockResult });
+  const { client, callLog } = createMockSupabase({
+    email_send_queue: mockResult,
+  });
 
   // attempts=1, maxAttempts=5 → not exhausted → failed
-  await markFailed(client as never, "q1", 1, 5, "temporary error", "test-token");
+  await markFailed(
+    client as never,
+    "q1",
+    1,
+    5,
+    "temporary error",
+    "test-token",
+  );
 
-  const updateCall = callLog.find(c => c.method === "email_send_queue.update");
+  const updateCall = callLog.find((c) =>
+    c.method === "email_send_queue.update"
+  );
   assertEquals(updateCall !== undefined, true);
 });
 
@@ -433,14 +491,23 @@ Deno.test("markFailed - returns false when token mismatches", async () => {
   const mockResult: MockQueryResult = { data: [], error: null };
   const { client } = createMockSupabase({ email_send_queue: mockResult });
 
-  const result = await markFailed(client as never, "q1", 1, 5, "error", "wrong-token");
+  const result = await markFailed(
+    client as never,
+    "q1",
+    1,
+    5,
+    "error",
+    "wrong-token",
+  );
 
   assertEquals(result, false);
 });
 
 Deno.test("markFailed - sanitizes PII in error messages", async () => {
   const mockResult: MockQueryResult = { data: [{ id: "q1" }], error: null };
-  const { client, callLog } = createMockSupabase({ email_send_queue: mockResult });
+  const { client, callLog } = createMockSupabase({
+    email_send_queue: mockResult,
+  });
 
   await markFailed(
     client as never,
@@ -451,7 +518,9 @@ Deno.test("markFailed - sanitizes PII in error messages", async () => {
     "test-token",
   );
 
-  const updateCall = callLog.find(c => c.method === "email_send_queue.update");
+  const updateCall = callLog.find((c) =>
+    c.method === "email_send_queue.update"
+  );
   assertEquals(updateCall !== undefined, true);
   if (updateCall) {
     const updateArg = updateCall.args[0] as Record<string, unknown>;
